@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Spendy",
+    "slug": "spendy-expense-tracker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "spendy",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#07090E"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.spendy.app",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Use Face ID to secure and unlock your financial expenses."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#07090E"
+      },
+      "package": "com.spendy.app"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-local-authentication"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

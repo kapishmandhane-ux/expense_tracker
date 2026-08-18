@@ -1,0 +1,4 @@
+-- Sample development seed data
+-- Note: Replace USER_ID_PLACEHOLDER with a real auth.uid() when running locally
+-- insert into public.expenses (user_id, amount, payment_method, note, spent_at)
+-- values ('00000000-0000-0000-0000-000000000000', 450.00, 'upi', 'Dinner at bistro', now());

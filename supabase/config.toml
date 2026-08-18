@@ -1,0 +1,16 @@
+# Supabase configuration for local development
+[api]
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+
+[db]
+port = 54322
+major_version = 16
+
+[studio]
+port = 54323
+
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["https://localhost:3000", "exp://localhost:8081"]
+enable_signup = true

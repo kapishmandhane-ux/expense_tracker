@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 243.4 75.4% 58.6%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 243.4 75.4% 58.6%;
+    --radius: 1rem;
+  }
+
+  .dark {
+    --background: 228 33% 4%;
+    --foreground: 210 40% 98%;
+    --card: 224 71% 4%;
+    --card-foreground: 210 40% 98%;
+    --popover: 224 71% 4%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 243.4 75.4% 58.6%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 243.4 75.4% 58.6%;
+  }
+}
+
+@layer utilities {
+  /* Level 1 Glass (Navigation / Bars) */
+  .glass-nav {
+    @apply bg-white/50 dark:bg-slate-950/60 backdrop-blur-xl border border-white/60 dark:border-white/[0.08] shadow-sm;
+  }
+
+  /* Level 2 Glass (Cards / Feed Items) */
+  .glass-card {
+    @apply relative overflow-hidden rounded-2xl bg-white/60 dark:bg-white/[0.04] backdrop-blur-xl border border-white/70 dark:border-white/[0.12] shadow-lg shadow-slate-200/40 dark:shadow-2xl dark:shadow-black/50 transition-all duration-300;
+  }
+
+  /* Level 3 Glass (Modals / Overlays) */
+  .glass-modal {
+    @apply bg-white/85 dark:bg-slate-950/80 backdrop-blur-2xl border border-white/80 dark:border-white/[0.18] shadow-2xl shadow-slate-300/60 dark:shadow-black/80;
+  }
+
+  /* Specular Highlight Bar */
+  .specular-line {
+    @apply absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/80 dark:via-white/25 to-transparent pointer-events-none;
+  }
+}
+
+/* Custom Scrollbar for sleek aesthetic */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
