@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Plus,
   Search,
@@ -11,284 +11,703 @@ import {
   Edit2,
   Tag,
   CreditCard,
+  CheckSquare,
+  Square,
+  AlertCircle,
+  X,
+  RefreshCw,
+  TrendingDown,
+  FileSpreadsheet,
 } from 'lucide-react';
+import { formatCurrency, formatExpenseDate, getDateRangePreset } from '@repo/utils';
+import { createClient } from '../../../lib/supabase/client';
+import { useExpensesQuery, useExpenseMutations, useRealtimeSync } from '@repo/api';
+import { ExpenseWithCategory } from '@repo/types';
 
-interface ExpenseItem {
-  id: string;
-  title: string;
-  category: string;
-  categoryColor: string;
-  amount: number;
-  paymentMethod: string;
-  date: string;
-  note?: string;
-}
+const PRESET_CATEGORIES = [
+  { id: 'cat-1', name: 'Food & Dining', color: '#f97316', icon: 'utensils' },
+  { id: 'cat-2', name: 'Groceries', color: '#10b981', icon: 'shopping-cart' },
+  { id: 'cat-3', name: 'Transportation', color: '#3b82f6', icon: 'car' },
+  { id: 'cat-4', name: 'Bills & Utilities', color: '#8b5cf6', icon: 'receipt' },
+  { id: 'cat-5', name: 'Entertainment', color: '#ec4899', icon: 'film' },
+  { id: 'cat-6', name: 'Shopping', color: '#eab308', icon: 'shopping-bag' },
+  { id: 'cat-7', name: 'Health & Fitness', color: '#06b6d4', icon: 'activity' },
+  { id: 'cat-8', name: 'Others', color: '#64748b', icon: 'more-horizontal' },
+];
 
-const INITIAL_EXPENSES: ExpenseItem[] = [
+const PAYMENT_METHODS = [
+  { id: 'upi', label: 'UPI' },
+  { id: 'credit_card', label: 'Credit Card' },
+  { id: 'debit_card', label: 'Debit Card' },
+  { id: 'net_banking', label: 'Net Banking' },
+  { id: 'cash', label: 'Cash' },
+  { id: 'other', label: 'Other' },
+];
+
+// Fallback initial dataset for preview / offline mode
+const FALLBACK_EXPENSES: ExpenseWithCategory[] = [
   {
-    id: '1',
-    title: 'Whole Foods Market',
-    category: 'Groceries',
-    categoryColor: '#10b981',
+    id: 'exp-1',
+    user_id: 'user-demo',
+    category_id: 'cat-2',
     amount: 2450.0,
-    paymentMethod: 'upi',
-    date: '2026-08-19T10:30:00Z',
-    note: 'Weekly essentials and fresh produce',
+    payment_method: 'upi',
+    spent_at: '2026-08-19T10:30:00Z',
+    note: 'Whole Foods - Fresh produce & organic milk',
+    receipt_storage_path: null,
+    created_at: '2026-08-19T10:30:00Z',
+    updated_at: '2026-08-19T10:30:00Z',
+    category: {
+      id: 'cat-2',
+      user_id: 'user-demo',
+      name: 'Groceries',
+      color: '#10b981',
+      icon: 'shopping-cart',
+      is_system: true,
+      created_at: '2026-08-19T10:30:00Z',
+    },
   },
   {
-    id: '2',
-    title: 'Starbucks Coffee',
-    category: 'Food & Dining',
-    categoryColor: '#f97316',
+    id: 'exp-2',
+    user_id: 'user-demo',
+    category_id: 'cat-1',
     amount: 480.0,
-    paymentMethod: 'credit_card',
-    date: '2026-08-19T08:15:00Z',
-    note: 'Espresso & croissant with client',
+    payment_method: 'credit_card',
+    spent_at: '2026-08-19T08:15:00Z',
+    note: 'Starbucks Coffee & Almond Croissant',
+    receipt_storage_path: null,
+    created_at: '2026-08-19T08:15:00Z',
+    updated_at: '2026-08-19T08:15:00Z',
+    category: {
+      id: 'cat-1',
+      user_id: 'user-demo',
+      name: 'Food & Dining',
+      color: '#f97316',
+      icon: 'utensils',
+      is_system: true,
+      created_at: '2026-08-19T08:15:00Z',
+    },
   },
   {
-    id: '3',
-    title: 'Uber Premier Ride',
-    category: 'Transportation',
-    categoryColor: '#3b82f6',
+    id: 'exp-3',
+    user_id: 'user-demo',
+    category_id: 'cat-3',
     amount: 620.0,
-    paymentMethod: 'upi',
-    date: '2026-08-18T21:40:00Z',
-    note: 'Airport drop-off',
+    payment_method: 'upi',
+    spent_at: '2026-08-18T21:40:00Z',
+    note: 'Uber Premier airport drop',
+    receipt_storage_path: null,
+    created_at: '2026-08-18T21:40:00Z',
+    updated_at: '2026-08-18T21:40:00Z',
+    category: {
+      id: 'cat-3',
+      user_id: 'user-demo',
+      name: 'Transportation',
+      color: '#3b82f6',
+      icon: 'car',
+      is_system: true,
+      created_at: '2026-08-18T21:40:00Z',
+    },
   },
   {
-    id: '4',
-    title: 'Electricity & Broadband Bill',
-    category: 'Bills & Utilities',
-    categoryColor: '#8b5cf6',
+    id: 'exp-4',
+    user_id: 'user-demo',
+    category_id: 'cat-4',
     amount: 3200.0,
-    paymentMethod: 'net_banking',
-    date: '2026-08-17T14:00:00Z',
-    note: 'High-speed fiber & power utility',
+    payment_method: 'net_banking',
+    spent_at: '2026-08-17T14:00:00Z',
+    note: 'High-speed Broadband & Power bill',
+    receipt_storage_path: null,
+    created_at: '2026-08-17T14:00:00Z',
+    updated_at: '2026-08-17T14:00:00Z',
+    category: {
+      id: 'cat-4',
+      user_id: 'user-demo',
+      name: 'Bills & Utilities',
+      color: '#8b5cf6',
+      icon: 'receipt',
+      is_system: true,
+      created_at: '2026-08-17T14:00:00Z',
+    },
   },
   {
-    id: '5',
-    title: 'IMAX Cinema Tickets',
-    category: 'Entertainment',
-    categoryColor: '#ec4899',
+    id: 'exp-5',
+    user_id: 'user-demo',
+    category_id: 'cat-5',
     amount: 1100.0,
-    paymentMethod: 'debit_card',
-    date: '2026-08-16T19:00:00Z',
-    note: '2x evening tickets',
+    payment_method: 'debit_card',
+    spent_at: '2026-08-16T19:00:00Z',
+    note: 'IMAX Cinema Tickets for 2',
+    receipt_storage_path: null,
+    created_at: '2026-08-16T19:00:00Z',
+    updated_at: '2026-08-16T19:00:00Z',
+    category: {
+      id: 'cat-5',
+      user_id: 'user-demo',
+      name: 'Entertainment',
+      color: '#ec4899',
+      icon: 'film',
+      is_system: true,
+      created_at: '2026-08-16T19:00:00Z',
+    },
   },
   {
-    id: '6',
-    title: 'Nike Running Shoes',
-    category: 'Shopping',
-    categoryColor: '#eab308',
+    id: 'exp-6',
+    user_id: 'user-demo',
+    category_id: 'cat-6',
     amount: 6500.0,
-    paymentMethod: 'credit_card',
-    date: '2026-08-15T16:20:00Z',
-    note: 'Pegasus 41 running gear',
+    payment_method: 'credit_card',
+    spent_at: '2026-08-15T16:20:00Z',
+    note: 'Nike Pegasus 41 Running Shoes',
+    receipt_storage_path: null,
+    created_at: '2026-08-15T16:20:00Z',
+    updated_at: '2026-08-15T16:20:00Z',
+    category: {
+      id: 'cat-6',
+      user_id: 'user-demo',
+      name: 'Shopping',
+      color: '#eab308',
+      icon: 'shopping-bag',
+      is_system: true,
+      created_at: '2026-08-15T16:20:00Z',
+    },
   },
 ];
 
 export default function ExpensesPage() {
-  const [expenses, setExpenses] = useState<ExpenseItem[]>(INITIAL_EXPENSES);
+  const supabase = useMemo(() => createClient(), []);
+  useRealtimeSync(supabase);
+
+  const { data: dbExpenses, isLoading, refetch } = useExpensesQuery(supabase);
+  const { createExpense, updateExpense, deleteExpense, bulkDeleteExpenses } = useExpenseMutations(supabase);
+
+  // Local fallback storage for interactive demo when DB is empty
+  const [localExpenses, setLocalExpenses] = useState<ExpenseWithCategory[]>(FALLBACK_EXPENSES);
+
+  // Active items priority: DB data if present, otherwise local state
+  const rawExpenses = dbExpenses && dbExpenses.length > 0 ? dbExpenses : localExpenses;
+
+  // Filter State
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('all');
+  const [datePreset, setDatePreset] = useState<'all' | 'today' | 'this_week' | 'this_month' | 'last_30_days'>('all');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<ExpenseWithCategory | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Form State
-  const [title, setTitle] = useState('');
-  const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState('Food & Dining');
-  const [paymentMethod, setPaymentMethod] = useState('upi');
-  const [note, setNote] = useState('');
+  const [formAmount, setFormAmount] = useState('');
+  const [formCategory, setFormCategory] = useState('cat-1');
+  const [formPaymentMethod, setFormPaymentMethod] = useState('upi');
+  const [formNote, setFormNote] = useState('');
+  const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10));
 
-  const filteredExpenses = expenses.filter((exp) => {
-    const matchesSearch =
-      exp.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      exp.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (exp.note && exp.note.toLowerCase().includes(searchQuery.toLowerCase()));
+  // Filter Logic
+  const filteredExpenses = useMemo(() => {
+    return rawExpenses.filter((exp) => {
+      // Search
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const noteMatch = exp.note?.toLowerCase().includes(query);
+        const catMatch = exp.category?.name.toLowerCase().includes(query);
+        if (!noteMatch && !catMatch) return false;
+      }
 
-    const matchesCategory =
-      selectedCategory === 'all' || exp.category === selectedCategory;
+      // Category
+      if (selectedCategory !== 'all') {
+        const catName = exp.category?.name || 'Others';
+        if (exp.category_id !== selectedCategory && catName !== selectedCategory) {
+          return false;
+        }
+      }
 
-    return matchesSearch && matchesCategory;
-  });
+      // Payment Method
+      if (selectedPaymentMethod !== 'all' && exp.payment_method !== selectedPaymentMethod) {
+        return false;
+      }
 
-  const handleAddExpense = (e: React.FormEvent) => {
+      // Date Presets
+      if (datePreset !== 'all') {
+        const range = getDateRangePreset(datePreset);
+        const expTime = new Date(exp.spent_at).getTime();
+        const start = new Date(range.start_date).getTime();
+        const end = new Date(range.end_date).getTime();
+        if (expTime < start || expTime > end) return false;
+      }
+
+      return true;
+    });
+  }, [rawExpenses, searchQuery, selectedCategory, selectedPaymentMethod, datePreset]);
+
+  // Statistics for Current Filter
+  const totalFilteredSpend = useMemo(() => {
+    return filteredExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
+  }, [filteredExpenses]);
+
+  // Bulk Selection Handlers
+  const handleToggleSelect = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedIds(next);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === filteredExpenses.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredExpenses.map((e) => e.id)));
+    }
+  };
+
+  // Add Expense Submit
+  const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amount || isNaN(Number(amount))) return;
+    if (!formAmount || isNaN(Number(formAmount))) return;
 
-    const newExpense: ExpenseItem = {
-      id: Date.now().toString(),
-      title: title || `${category} Expense`,
-      category,
-      categoryColor:
-        category === 'Food & Dining'
-          ? '#f97316'
-          : category === 'Groceries'
-          ? '#10b981'
-          : category === 'Transportation'
-          ? '#3b82f6'
-          : category === 'Shopping'
-          ? '#eab308'
-          : '#8b5cf6',
-      amount: parseFloat(amount),
-      paymentMethod,
-      date: new Date().toISOString(),
-      note,
+    const chosenCat = PRESET_CATEGORIES.find((c) => c.id === formCategory) || PRESET_CATEGORIES[0];
+    const newRecord: ExpenseWithCategory = {
+      id: 'exp-' + Date.now(),
+      user_id: 'user-demo',
+      amount: parseFloat(formAmount),
+      category_id: chosenCat.id,
+      payment_method: formPaymentMethod as any,
+      note: formNote || chosenCat.name,
+      spent_at: new Date(formDate).toISOString(),
+      receipt_storage_path: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      category: {
+        id: chosenCat.id,
+        user_id: 'user-demo',
+        name: chosenCat.name,
+        color: chosenCat.color,
+        icon: chosenCat.icon,
+        is_system: true,
+        created_at: new Date().toISOString(),
+      },
     };
 
-    setExpenses([newExpense, ...expenses]);
-    setTitle('');
-    setAmount('');
-    setNote('');
+    // Update local state and trigger mutation
+    setLocalExpenses((prev) => [newRecord, ...prev]);
+    createExpense.mutate({
+      amount: parseFloat(formAmount),
+      category_id: chosenCat.id,
+      payment_method: formPaymentMethod as any,
+      note: formNote || chosenCat.name,
+      spent_at: new Date(formDate).toISOString(),
+    });
+
+    // Reset Form
+    setFormAmount('');
+    setFormNote('');
     setIsAddModalOpen(false);
   };
 
-  const handleDelete = (id: string) => {
-    setExpenses(expenses.filter((e) => e.id !== id));
+  // Edit Submit
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingExpense || !formAmount || isNaN(Number(formAmount))) return;
+
+    const chosenCat = PRESET_CATEGORIES.find((c) => c.id === formCategory) || PRESET_CATEGORIES[0];
+    const updatedRecord: ExpenseWithCategory = {
+      ...editingExpense,
+      amount: parseFloat(formAmount),
+      category_id: chosenCat.id,
+      payment_method: formPaymentMethod as any,
+      note: formNote,
+      spent_at: new Date(formDate).toISOString(),
+      category: {
+        id: chosenCat.id,
+        user_id: 'user-demo',
+        name: chosenCat.name,
+        color: chosenCat.color,
+        icon: chosenCat.icon,
+        is_system: true,
+        created_at: new Date().toISOString(),
+      },
+    };
+
+    setLocalExpenses((prev) => prev.map((exp) => (exp.id === editingExpense.id ? updatedRecord : exp)));
+    updateExpense.mutate({
+      id: editingExpense.id,
+      amount: parseFloat(formAmount),
+      category_id: chosenCat.id,
+      payment_method: formPaymentMethod as any,
+      note: formNote,
+      spent_at: new Date(formDate).toISOString(),
+    });
+
+    setEditingExpense(null);
+  };
+
+  // Delete Action
+  const handleDeleteConfirm = () => {
+    if (!deletingId) return;
+    setLocalExpenses((prev) => prev.filter((exp) => exp.id !== deletingId));
+    deleteExpense.mutate(deletingId);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(deletingId);
+      return next;
+    });
+    setDeletingId(null);
+  };
+
+  // Bulk Delete Action
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    setLocalExpenses((prev) => prev.filter((exp) => !selectedIds.has(exp.id)));
+    bulkDeleteExpenses.mutate(ids);
+    setSelectedIds(new Set());
+  };
+
+  const openEditModal = (exp: ExpenseWithCategory) => {
+    setEditingExpense(exp);
+    setFormAmount(exp.amount.toString());
+    setFormCategory(exp.category_id || 'cat-1');
+    setFormPaymentMethod(exp.payment_method);
+    setFormNote(exp.note || '');
+    setFormDate(new Date(exp.spent_at).toISOString().slice(0, 10));
   };
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
+      {/* Top Header & Action Row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-            Expense Ledger
+            Expenses Ledger
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Search, filter, edit and track every single transaction
+            Complete transaction history with instant filtering, editing, and CSV exports
           </p>
         </div>
 
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-lg shadow-indigo-500/25 transition-all hover:scale-[1.02] cursor-pointer"
-        >
-          <Plus className="h-4 w-4" />
-          <span>New Expense</span>
-        </button>
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div className="glass-card p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="specular-line" />
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search merchant, notes..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-100/80 dark:bg-white/[0.04] border border-white/60 dark:border-white/10 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-          />
-        </div>
-
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-slate-100/80 dark:bg-white/[0.04] border border-white/60 dark:border-white/10 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+        <div className="flex items-center gap-3">
+          <a
+            href="/api/export"
+            download
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold border border-slate-200/80 dark:border-white/10 bg-white/70 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-700 dark:text-slate-200 transition backdrop-blur-md shadow-sm"
           >
-            <option value="all">All Categories</option>
-            <option value="Food & Dining">Food & Dining</option>
-            <option value="Groceries">Groceries</option>
-            <option value="Transportation">Transportation</option>
-            <option value="Bills & Utilities">Bills & Utilities</option>
-            <option value="Shopping">Shopping</option>
-            <option value="Entertainment">Entertainment</option>
-          </select>
+            <Download className="h-4 w-4 text-emerald-500" />
+            <span>Export CSV</span>
+          </a>
 
           <button
             onClick={() => {
-              const csv = [
-                'ID,Title,Category,Amount,PaymentMethod,Date,Note',
-                ...filteredExpenses.map(
-                  (e) =>
-                    `"${e.id}","${e.title}","${e.category}",${e.amount},"${e.paymentMethod}","${e.date}","${e.note || ''}"`
-                ),
-              ].join('\n');
-              const blob = new Blob([csv], { type: 'text/csv' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `expenses-${new Date().toISOString().split('T')[0]}.csv`;
-              a.click();
+              setFormAmount('');
+              setFormNote('');
+              setFormDate(new Date().toISOString().slice(0, 10));
+              setIsAddModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100/80 dark:bg-white/[0.04] border border-white/60 dark:border-white/10 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/[0.08] transition-colors cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white shadow-lg shadow-indigo-500/25 transition active:scale-[0.98]"
           >
-            <Download className="h-3.5 w-3.5" />
-            <span>Export CSV</span>
+            <Plus className="h-4 w-4" />
+            <span>Add Expense</span>
           </button>
         </div>
       </div>
 
-      {/* Expenses Table */}
-      <div className="glass-card overflow-hidden">
-        <div className="specular-line" />
+      {/* Summary KPI Pills */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="glass-panel p-4 rounded-2xl flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Filtered Total Spend
+            </p>
+            <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
+              {formatCurrency(totalFilteredSpend)}
+            </p>
+          </div>
+          <div className="p-3 rounded-xl bg-indigo-500/10 text-indigo-500">
+            <TrendingDown className="h-5 w-5" />
+          </div>
+        </div>
+
+        <div className="glass-panel p-4 rounded-2xl flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Transactions Found
+            </p>
+            <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
+              {filteredExpenses.length} Records
+            </p>
+          </div>
+          <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-500">
+            <Tag className="h-5 w-5" />
+          </div>
+        </div>
+
+        <div className="glass-panel p-4 rounded-2xl flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Average Per Transaction
+            </p>
+            <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
+              {filteredExpenses.length > 0
+                ? formatCurrency(totalFilteredSpend / filteredExpenses.length)
+                : '₹0'}
+            </p>
+          </div>
+          <div className="p-3 rounded-xl bg-pink-500/10 text-pink-500">
+            <CreditCard className="h-5 w-5" />
+          </div>
+        </div>
+      </div>
+
+      {/* Toolbar & Filters Card */}
+      <div className="glass-panel p-5 rounded-2xl space-y-4">
+        <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+          {/* Search Bar */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search by note, merchant, or tag..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm bg-slate-100 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Date Presets */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+            {[
+              { id: 'all', label: 'All Time' },
+              { id: 'today', label: 'Today' },
+              { id: 'this_week', label: 'This Week' },
+              { id: 'this_month', label: 'This Month' },
+              { id: 'last_30_days', label: '30 Days' },
+            ].map((preset) => (
+              <button
+                key={preset.id}
+                onClick={() => setDatePreset(preset.id as any)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+                  datePreset === preset.id
+                    ? 'bg-indigo-500 text-white shadow-sm shadow-indigo-500/30'
+                    : 'bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10'
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Category Pills & Payment Method Selector */}
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between border-t border-slate-200/50 dark:border-white/5 pt-3">
+          {/* Categories */}
+          <div className="flex items-center gap-1.5 overflow-x-auto max-w-full pb-1">
+            <button
+              onClick={() => setSelectedCategory('all')}
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition ${
+                selectedCategory === 'all'
+                  ? 'bg-slate-800 text-white dark:bg-white dark:text-slate-900 font-semibold'
+                  : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+              }`}
+            >
+              All Categories
+            </button>
+            {PRESET_CATEGORIES.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategory(selectedCategory === cat.name ? 'all' : cat.name)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 whitespace-nowrap transition ${
+                  selectedCategory === cat.name
+                    ? 'bg-slate-800 text-white dark:bg-white dark:text-slate-900 font-semibold'
+                    : 'bg-slate-100/80 dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10'
+                }`}
+              >
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: cat.color }}
+                />
+                {cat.name}
+              </button>
+            ))}
+          </div>
+
+          {/* Payment Method Select */}
+          <select
+            value={selectedPaymentMethod}
+            onChange={(e) => setSelectedPaymentMethod(e.target.value)}
+            className="px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            <option value="all">All Payment Methods</option>
+            {PAYMENT_METHODS.map((pm) => (
+              <option key={pm.id} value={pm.id}>
+                {pm.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Bulk Action Bar (Visible when rows selected) */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center justify-between p-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-900 dark:text-indigo-200 animate-fade-in">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold">
+              {selectedIds.size} transaction{selectedIds.size > 1 ? 's' : ''} selected
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleBulkDelete}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-500 hover:bg-rose-600 text-white shadow transition"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Delete Selected</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Transactions Data Table */}
+      <div className="glass-panel rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100/80 dark:bg-white/[0.03] border-b border-slate-200/60 dark:border-white/[0.08] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold">
-              <tr>
-                <th className="px-6 py-4">Transaction / Merchant</th>
-                <th className="px-6 py-4">Category</th>
-                <th className="px-6 py-4">Payment Mode</th>
-                <th className="px-6 py-4">Date</th>
-                <th className="px-6 py-4 text-right">Amount</th>
-                <th className="px-6 py-4 text-right">Actions</th>
+          <table className="w-full text-left text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200/80 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.02]">
+                <th className="p-4 w-10">
+                  <button
+                    onClick={handleSelectAll}
+                    className="text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                  >
+                    {selectedIds.size > 0 && selectedIds.size === filteredExpenses.length ? (
+                      <CheckSquare className="h-4 w-4 text-indigo-500" />
+                    ) : (
+                      <Square className="h-4 w-4" />
+                    )}
+                  </button>
+                </th>
+                <th className="p-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Transaction & Note
+                </th>
+                <th className="p-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Category
+                </th>
+                <th className="p-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Payment Mode
+                </th>
+                <th className="p-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Date
+                </th>
+                <th className="p-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">
+                  Amount
+                </th>
+                <th className="p-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">
+                  Actions
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.06]">
-              {filteredExpenses.map((exp) => (
-                <tr
-                  key={exp.id}
-                  className="hover:bg-slate-100/50 dark:hover:bg-white/[0.02] transition-colors"
-                >
-                  <td className="px-6 py-4">
-                    <p className="font-bold text-slate-900 dark:text-white text-sm">
-                      {exp.title}
-                    </p>
-                    {exp.note && (
-                      <p className="text-slate-400 dark:text-slate-500 text-[11px] mt-0.5">
-                        {exp.note}
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold text-white shadow-xs"
-                      style={{ backgroundColor: exp.categoryColor }}
-                    >
-                      {exp.category}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="px-2 py-0.5 rounded-md bg-slate-200/70 dark:bg-white/10 text-slate-700 dark:text-slate-300 font-semibold uppercase text-[10px]">
-                      {exp.paymentMethod.replace('_', ' ')}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-500 dark:text-slate-400">
-                    {new Date(exp.date).toLocaleDateString([], {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="font-extrabold text-slate-900 dark:text-white text-sm">
-                      ₹{exp.amount.toFixed(2)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => handleDelete(exp.id)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
-                      aria-label="Delete entry"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+            <tbody className="divide-y divide-slate-200/60 dark:divide-white/5">
+              {filteredExpenses.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="p-12 text-center text-slate-400 dark:text-slate-500">
+                    <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="font-medium text-base">No expenses matched your filter criteria.</p>
+                    <p className="text-xs text-slate-400 mt-1">Try resetting filters or adding a new expense record.</p>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredExpenses.map((item) => {
+                  const isSelected = selectedIds.has(item.id);
+                  const catColor = item.category?.color || '#64748b';
+                  const catName = item.category?.name || 'Others';
+
+                  return (
+                    <tr
+                      key={item.id}
+                      className={`hover:bg-slate-50/80 dark:hover:bg-white/[0.03] transition-colors ${
+                        isSelected ? 'bg-indigo-50/40 dark:bg-indigo-950/20' : ''
+                      }`}
+                    >
+                      <td className="p-4">
+                        <button
+                          onClick={() => handleToggleSelect(item.id)}
+                          className="text-slate-400 hover:text-indigo-500"
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="h-4 w-4 text-indigo-500" />
+                          ) : (
+                            <Square className="h-4 w-4" />
+                          )}
+                        </button>
+                      </td>
+                      <td className="p-4 font-medium text-slate-900 dark:text-white">
+                        <div className="flex flex-col">
+                          <span>{item.note || catName}</span>
+                          <span className="text-xs text-slate-400 dark:text-slate-500">
+                            ID: {item.id.slice(0, 8)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <span
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
+                          style={{
+                            backgroundColor: `${catColor}18`,
+                            color: catColor,
+                          }}
+                        >
+                          <span
+                            className="w-1.5 h-1.5 rounded-full"
+                            style={{ backgroundColor: catColor }}
+                          />
+                          {catName}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium uppercase tracking-wider bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-200/50 dark:border-white/5">
+                          {item.payment_method.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="p-4 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">
+                        {formatExpenseDate(item.spent_at)}
+                      </td>
+                      <td className="p-4 font-bold text-slate-900 dark:text-white text-right whitespace-nowrap">
+                        {formatCurrency(Number(item.amount))}
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => openEditModal(item)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-500 hover:bg-indigo-500/10 transition"
+                            title="Edit"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeletingId(item.id)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -296,16 +715,21 @@ export default function ExpensesPage() {
 
       {/* Add Expense Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-          <div className="glass-modal w-full max-w-md p-6 rounded-3xl relative">
-            <div className="specular-line" />
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-              Add Quick Expense
-            </h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="glass-panel max-w-md w-full p-6 rounded-3xl space-y-5 shadow-2xl border border-slate-200/80 dark:border-white/10">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">Record New Expense</h3>
+              <button
+                onClick={() => setIsAddModalOpen(false)}
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
-            <form onSubmit={handleAddExpense} className="space-y-4">
+            <form onSubmit={handleAddSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
                   Amount (₹)
                 </label>
                 <input
@@ -313,74 +737,70 @@ export default function ExpensesPage() {
                   step="0.01"
                   required
                   placeholder="0.00"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="w-full text-2xl font-black px-4 py-3 rounded-xl bg-white/40 dark:bg-white/[0.04] border border-white/60 dark:border-white/10 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={formAmount}
+                  onChange={(e) => setFormAmount(e.target.value)}
+                  className="w-full text-2xl font-bold px-4 py-3 rounded-2xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Merchant / Title
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                  Category
                 </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Starbucks, Uber, Grocery store"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/40 dark:bg-white/[0.04] border border-white/60 dark:border-white/10 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+                <select
+                  value={formCategory}
+                  onChange={(e) => setFormCategory(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {PRESET_CATEGORIES.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Category
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                    Payment Mode
                   </label>
                   <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl bg-white/40 dark:bg-white/[0.04] border border-white/60 dark:border-white/10 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={formPaymentMethod}
+                    onChange={(e) => setFormPaymentMethod(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
-                    <option value="Food & Dining">Food & Dining</option>
-                    <option value="Groceries">Groceries</option>
-                    <option value="Transportation">Transportation</option>
-                    <option value="Bills & Utilities">Bills & Utilities</option>
-                    <option value="Shopping">Shopping</option>
-                    <option value="Entertainment">Entertainment</option>
-                    <option value="Health & Fitness">Health & Fitness</option>
-                    <option value="Others">Others</option>
+                    {PAYMENT_METHODS.map((pm) => (
+                      <option key={pm.id} value={pm.id}>
+                        {pm.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Payment Method
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                    Date
                   </label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl bg-white/40 dark:bg-white/[0.04] border border-white/60 dark:border-white/10 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="upi">UPI</option>
-                    <option value="credit_card">Credit Card</option>
-                    <option value="debit_card">Debit Card</option>
-                    <option value="cash">Cash</option>
-                    <option value="net_banking">Net Banking</option>
-                  </select>
+                  <input
+                    type="date"
+                    value={formDate}
+                    onChange={(e) => setFormDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Note (Optional)
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                  Note / Merchant
                 </label>
                 <input
                   type="text"
-                  placeholder="Additional context or receipt tag..."
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/40 dark:bg-white/[0.04] border border-white/60 dark:border-white/10 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g. Grocery store, Uber to airport..."
+                  value={formNote}
+                  onChange={(e) => setFormNote(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
@@ -388,18 +808,156 @@ export default function ExpensesPage() {
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-500/25 transition-all hover:scale-[1.02] cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/25 transition"
                 >
-                  Save Transaction
+                  Save Expense
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Expense Modal */}
+      {editingExpense && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="glass-panel max-w-md w-full p-6 rounded-3xl space-y-5 shadow-2xl border border-slate-200/80 dark:border-white/10">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">Edit Expense</h3>
+              <button
+                onClick={() => setEditingExpense(null)}
+                className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                  Amount (₹)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={formAmount}
+                  onChange={(e) => setFormAmount(e.target.value)}
+                  className="w-full text-2xl font-bold px-4 py-3 rounded-2xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                  Category
+                </label>
+                <select
+                  value={formCategory}
+                  onChange={(e) => setFormCategory(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {PRESET_CATEGORIES.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                    Payment Mode
+                  </label>
+                  <select
+                    value={formPaymentMethod}
+                    onChange={(e) => setFormPaymentMethod(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {PAYMENT_METHODS.map((pm) => (
+                      <option key={pm.id} value={pm.id}>
+                        {pm.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={formDate}
+                    onChange={(e) => setFormDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                  Note / Merchant
+                </label>
+                <input
+                  type="text"
+                  value={formNote}
+                  onChange={(e) => setFormNote(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingExpense(null)}
+                  className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/25 transition"
+                >
+                  Update Expense
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="glass-panel max-w-sm w-full p-6 rounded-3xl space-y-4 shadow-2xl border border-rose-500/30">
+            <div className="flex items-center gap-3 text-rose-500">
+              <AlertCircle className="h-6 w-6" />
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Delete Transaction</h3>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Are you sure you want to delete this expense? This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => setDeletingId(null)}
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="px-4 py-2 rounded-xl text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow transition"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

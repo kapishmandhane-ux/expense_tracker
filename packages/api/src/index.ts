@@ -2,3 +2,7 @@ export * from './supabase';
 export * from './queries/use-expenses-query';
 export * from './queries/use-categories-query';
 export * from './queries/use-budgets-query';
+export * from './queries/use-realtime-sync';
+export * from './mutations/use-expense-mutations';
+export * from './mutations/use-category-mutations';
+export * from './mutations/use-budget-mutations';

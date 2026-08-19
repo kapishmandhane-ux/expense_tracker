@@ -1,15 +1,28 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { GlassCard } from '../../components/glass-card';
+import { supabase } from '../../lib/supabase/secure-client';
+import { useExpensesQuery, useCategoriesQuery } from '@repo/api';
+import { calculateCategorySummaries, formatCurrency } from '@repo/utils';
+
+const PRESET_CATEGORIES = [
+  { id: 'cat-1', user_id: 'user-demo', name: 'Food & Dining', color: '#f97316', icon: 'utensils', is_system: true, created_at: '' },
+  { id: 'cat-2', user_id: 'user-demo', name: 'Groceries', color: '#10b981', icon: 'shopping-cart', is_system: true, created_at: '' },
+  { id: 'cat-3', user_id: 'user-demo', name: 'Transportation', color: '#3b82f6', icon: 'car', is_system: true, created_at: '' },
+  { id: 'cat-4', user_id: 'user-demo', name: 'Bills & Utilities', color: '#8b5cf6', icon: 'receipt', is_system: true, created_at: '' },
+  { id: 'cat-5', user_id: 'user-demo', name: 'Entertainment', color: '#ec4899', icon: 'film', is_system: true, created_at: '' },
+  { id: 'cat-6', user_id: 'user-demo', name: 'Shopping', color: '#eab308', icon: 'shopping-bag', is_system: true, created_at: '' },
+];
 
 export default function MobileAnalyticsScreen() {
-  const breakdown = [
-    { cat: 'Food & Dining', amount: '₹6,850', pct: '32%', color: '#f97316' },
-    { cat: 'Groceries', amount: '₹5,400', pct: '25%', color: '#10b981' },
-    { cat: 'Utilities', amount: '₹4,200', pct: '20%', color: '#8b5cf6' },
-    { cat: 'Travel', amount: '₹3,200', pct: '15%', color: '#3b82f6' },
-    { cat: 'Entertainment', amount: '₹1,100', pct: '5%', color: '#ec4899' },
-  ];
+  const { data: dbExpenses } = useExpensesQuery(supabase);
+  const { data: dbCategories } = useCategoriesQuery(supabase);
+
+  const expenses = dbExpenses || [];
+  const categories = dbCategories && dbCategories.length > 0 ? dbCategories : PRESET_CATEGORIES;
+
+  const totalSpent = expenses.reduce((acc, e) => acc + Number(e.amount), 0) || 21500;
+  const summaries = calculateCategorySummaries(expenses, categories);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -17,22 +30,30 @@ export default function MobileAnalyticsScreen() {
 
       <GlassCard style={styles.heroCard}>
         <Text style={styles.heroLabel}>Total Monthly Outflow</Text>
-        <Text style={styles.heroAmount}>₹21,500.00</Text>
-        <Text style={styles.heroSub}>↓ 12.4% vs previous month</Text>
+        <Text style={styles.heroAmount}>{formatCurrency(totalSpent)}</Text>
+        <Text style={styles.heroSub}>Across all active categories</Text>
       </GlassCard>
 
       <Text style={styles.sectionTitle}>Category Proportion</Text>
-      {breakdown.map((b) => (
-        <GlassCard key={b.cat} style={styles.catCard}>
+      {summaries.map((b) => (
+        <GlassCard key={b.category_id} style={styles.catCard}>
           <View style={styles.catRow}>
             <View style={styles.catInfo}>
-              <View style={[styles.dot, { backgroundColor: b.color }]} />
-              <Text style={styles.catText}>{b.cat}</Text>
+              <View style={[styles.dot, { backgroundColor: b.category_color }]} />
+              <Text style={styles.catText}>{b.category_name}</Text>
             </View>
             <View style={styles.catValues}>
-              <Text style={styles.catAmount}>{b.amount}</Text>
-              <Text style={styles.catPct}>{b.pct}</Text>
+              <Text style={styles.catAmount}>{formatCurrency(b.total_amount)}</Text>
+              <Text style={styles.catPct}>{b.percentage}%</Text>
             </View>
+          </View>
+          <View style={styles.barBackground}>
+            <View
+              style={[
+                styles.barFill,
+                { width: `${Math.min(100, b.percentage)}%`, backgroundColor: b.category_color },
+              ]}
+            />
           </View>
         </GlassCard>
       ))}
@@ -47,11 +68,11 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
-    paddingTop: 60,
+    paddingTop: 55,
     paddingBottom: 100,
   },
   header: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '800',
     color: '#ffffff',
     marginBottom: 16,
@@ -60,10 +81,11 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   heroLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: '#94a3b8',
     textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   heroAmount: {
     fontSize: 34,
@@ -74,11 +96,11 @@ const styles = StyleSheet.create({
   heroSub: {
     fontSize: 12,
     color: '#34d399',
-    marginTop: 8,
+    marginTop: 6,
     fontWeight: '600',
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
     color: '#ffffff',
     marginBottom: 12,
@@ -90,6 +112,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 8,
   },
   catInfo: {
     flexDirection: 'row',
@@ -97,9 +120,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   catText: {
     fontSize: 14,
@@ -117,5 +140,15 @@ const styles = StyleSheet.create({
   catPct: {
     fontSize: 11,
     color: '#94a3b8',
+  },
+  barBackground: {
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: '100%',
+    borderRadius: 2,
   },
 });

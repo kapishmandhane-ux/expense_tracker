@@ -1,39 +1,63 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { GlassCard } from '../../components/glass-card';
+import { supabase } from '../../lib/supabase/secure-client';
+import { useExpensesQuery, useBudgetsQuery } from '@repo/api';
+import { formatCurrency, formatExpenseDate } from '@repo/utils';
 
 export default function MobileHomeScreen() {
-  const transactions = [
-    { id: '1', title: 'Whole Foods Market', amount: '₹2,450.00', category: 'Groceries' },
-    { id: '2', title: 'Starbucks Coffee', amount: '₹480.00', category: 'Food & Dining' },
-    { id: '3', title: 'Uber Premier', amount: '₹620.00', category: 'Transportation' },
-    { id: '4', title: 'Broadband Bill', amount: '₹1,499.00', category: 'Utilities' },
-  ];
+  const { data: dbExpenses } = useExpensesQuery(supabase);
+  const { data: dbBudgets } = useBudgetsQuery(supabase);
+
+  const expenses = dbExpenses || [];
+  const totalSpent = expenses.reduce((acc, e) => acc + Number(e.amount), 0) || 21500;
+  const totalBudget = dbBudgets?.reduce((acc, b) => acc + Number(b.monthly_limit), 0) || 50000;
+  const remaining = Math.max(0, totalBudget - totalSpent);
+
+  const recentExpenses = expenses.slice(0, 4);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.header}>August Overview</Text>
+      <Text style={styles.header}>Financial Overview</Text>
 
       {/* Main Balance Card */}
       <GlassCard style={styles.balanceCard}>
         <Text style={styles.balanceLabel}>Total Month Spend</Text>
-        <Text style={styles.balanceAmount}>₹21,500.00</Text>
-        <Text style={styles.balanceSub}>₹28,500 left of ₹50,000 budget</Text>
+        <Text style={styles.balanceAmount}>{formatCurrency(totalSpent)}</Text>
+        <Text style={styles.balanceSub}>
+          {formatCurrency(remaining)} left of {formatCurrency(totalBudget)} budget
+        </Text>
       </GlassCard>
 
       {/* Recent Feed */}
       <Text style={styles.sectionTitle}>Recent Transactions</Text>
-      {transactions.map((t) => (
-        <GlassCard key={t.id} style={styles.txCard}>
-          <View style={styles.txRow}>
-            <View>
-              <Text style={styles.txTitle}>{t.title}</Text>
-              <Text style={styles.txCat}>{t.category}</Text>
+      {recentExpenses.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No recent transactions recorded.</Text>
+        </View>
+      ) : (
+        recentExpenses.map((t) => (
+          <GlassCard key={t.id} style={styles.txCard}>
+            <View style={styles.txRow}>
+              <View style={styles.leftCol}>
+                <View
+                  style={[
+                    styles.catBadge,
+                    { backgroundColor: t.category?.color || '#64748b' },
+                  ]}
+                />
+                <View>
+                  <Text style={styles.txTitle}>{t.note || t.category?.name || 'Expense'}</Text>
+                  <Text style={styles.txCat}>
+                    {t.category?.name || 'General'} • {formatExpenseDate(t.spent_at)}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.txAmount}>{formatCurrency(Number(t.amount))}</Text>
             </View>
-            <Text style={styles.txAmount}>{t.amount}</Text>
-          </View>
-        </GlassCard>
-      ))}
+          </GlassCard>
+        ))
+      )}
     </ScrollView>
   );
 }
@@ -45,11 +69,11 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
-    paddingTop: 60,
+    paddingTop: 55,
     paddingBottom: 100,
   },
   header: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: '800',
     color: '#ffffff',
     marginBottom: 16,
@@ -58,10 +82,11 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   balanceLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     color: '#94a3b8',
     textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   balanceAmount: {
     fontSize: 34,
@@ -76,10 +101,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
     color: '#ffffff',
     marginBottom: 12,
+  },
+  emptyContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: '#64748b',
+    fontSize: 14,
   },
   txCard: {
     marginBottom: 10,
@@ -89,18 +122,29 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  leftCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  catBadge: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
   txTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: '#ffffff',
   },
   txCat: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#94a3b8',
     marginTop: 2,
   },
   txAmount: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: '#ffffff',
   },
