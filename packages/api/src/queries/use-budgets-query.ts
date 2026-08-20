@@ -5,7 +5,7 @@ import { Database, Budget } from '@repo/types';
 export const BUDGETS_QUERY_KEY = ['budgets'] as const;
 
 export function useBudgetsQuery(
-  supabase: SupabaseClient<Database>,
+  supabase: SupabaseClient<Database, any, any>,
   month?: string
 ) {
   return useQuery({

@@ -42,6 +42,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       categories: {
         Row: {
@@ -71,6 +72,7 @@ export interface Database {
           is_system?: boolean;
           created_at?: string;
         };
+        Relationships: [];
       };
       expenses: {
         Row: {
@@ -109,6 +111,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       budgets: {
         Row: {
@@ -135,6 +138,7 @@ export interface Database {
           month?: string;
           created_at?: string;
         };
+        Relationships: [];
       };
     };
     Views: {
@@ -145,6 +149,9 @@ export interface Database {
     };
     Enums: {
       payment_mode: PaymentMode;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
     };
   };
 }

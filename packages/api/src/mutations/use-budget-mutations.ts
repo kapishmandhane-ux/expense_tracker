@@ -4,7 +4,7 @@ import { Database, Budget } from '@repo/types';
 import { BudgetInput } from '@repo/validators';
 import { BUDGETS_QUERY_KEY } from '../queries/use-budgets-query';
 
-export function useBudgetMutations(supabase: SupabaseClient<Database>) {
+export function useBudgetMutations(supabase: SupabaseClient<Database, any, any>) {
   const queryClient = useQueryClient();
 
   const setBudget = useMutation({

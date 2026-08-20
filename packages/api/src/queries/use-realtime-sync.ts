@@ -6,7 +6,7 @@ import { EXPENSES_QUERY_KEY } from './use-expenses-query';
 import { CATEGORIES_QUERY_KEY } from './use-categories-query';
 import { BUDGETS_QUERY_KEY } from './use-budgets-query';
 
-export function useRealtimeSync(supabase: SupabaseClient<Database>) {
+export function useRealtimeSync(supabase: SupabaseClient<Database, any, any>) {
   const queryClient = useQueryClient();
 
   useEffect(() => {

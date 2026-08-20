@@ -37,7 +37,7 @@ export default function MobileExpensesScreen() {
   };
 
   const expenses = dbExpenses && dbExpenses.length > 0
-    ? dbExpenses.map((e) => ({
+    ? dbExpenses.map((e: any) => ({
         id: e.id,
         title: e.note || e.category?.name || 'Expense',
         amount: Number(e.amount),

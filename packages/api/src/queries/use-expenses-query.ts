@@ -5,7 +5,7 @@ import { Database, ExpenseWithCategory, ExpenseQueryFilters } from '@repo/types'
 export const EXPENSES_QUERY_KEY = ['expenses'] as const;
 
 export function useExpensesQuery(
-  supabase: SupabaseClient<Database>,
+  supabase: SupabaseClient<Database, any, any>,
   filters?: ExpenseQueryFilters
 ) {
   return useQuery({

@@ -21,7 +21,7 @@ export default function MobileAnalyticsScreen() {
   const expenses = dbExpenses || [];
   const categories = dbCategories && dbCategories.length > 0 ? dbCategories : PRESET_CATEGORIES;
 
-  const totalSpent = expenses.reduce((acc, e) => acc + Number(e.amount), 0) || 21500;
+  const totalSpent = expenses.reduce((acc: number, e: any) => acc + Number(e.amount), 0) || 21500;
   const summaries = calculateCategorySummaries(expenses, categories);
 
   return (
@@ -35,7 +35,7 @@ export default function MobileAnalyticsScreen() {
       </GlassCard>
 
       <Text style={styles.sectionTitle}>Category Proportion</Text>
-      {summaries.map((b) => (
+      {summaries.map((b: any) => (
         <GlassCard key={b.category_id} style={styles.catCard}>
           <View style={styles.catRow}>
             <View style={styles.catInfo}>

@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
           getAll() {
             return cookieStore.getAll();
           },
-          setAll(cookiesToSet) {
+          setAll(cookiesToSet: { name: string; value: string; options?: any }[]) {
             try {
               cookiesToSet.forEach(({ name, value, options }) =>
                 cookieStore.set(name, value, options)
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     const { data: expenses, error } = await query;
 
     // Fallback sample data if database is empty or running locally without active session
-    let records = expenses || [];
+    let records: any[] = (expenses as any[]) || [];
     if (records.length === 0) {
       records = [
         {

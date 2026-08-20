@@ -4,7 +4,7 @@ import { Database, ExpenseWithCategory } from '@repo/types';
 import { CreateExpenseInput, UpdateExpenseInput } from '@repo/validators';
 import { EXPENSES_QUERY_KEY } from '../queries/use-expenses-query';
 
-export function useExpenseMutations(supabase: SupabaseClient<Database>) {
+export function useExpenseMutations(supabase: SupabaseClient<Database, any, any>) {
   const queryClient = useQueryClient();
 
   const createExpense = useMutation({
@@ -66,10 +66,14 @@ export function useExpenseMutations(supabase: SupabaseClient<Database>) {
   const updateExpense = useMutation({
     mutationFn: async (updated: UpdateExpenseInput) => {
       const { id, ...rest } = updated;
-      const payload: Record<string, unknown> = { ...rest };
-      if (rest.spent_at) {
-        payload.spent_at = typeof rest.spent_at === 'string' ? rest.spent_at : rest.spent_at.toISOString();
-      }
+      const payload: Database['public']['Tables']['expenses']['Update'] = {
+        ...rest,
+        spent_at: rest.spent_at
+          ? typeof rest.spent_at === 'string'
+            ? rest.spent_at
+            : rest.spent_at.toISOString()
+          : undefined,
+      };
 
       const { data, error } = await supabase
         .from('expenses')

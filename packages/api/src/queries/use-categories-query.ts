@@ -4,7 +4,7 @@ import { Database, Category } from '@repo/types';
 
 export const CATEGORIES_QUERY_KEY = ['categories'] as const;
 
-export function useCategoriesQuery(supabase: SupabaseClient<Database>) {
+export function useCategoriesQuery(supabase: SupabaseClient<Database, any, any>) {
   return useQuery({
     queryKey: CATEGORIES_QUERY_KEY,
     queryFn: async (): Promise<Category[]> => {

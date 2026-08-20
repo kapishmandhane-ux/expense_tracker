@@ -4,7 +4,7 @@ import { Database, Category } from '@repo/types';
 import { CreateCategoryInput, UpdateCategoryInput } from '@repo/validators';
 import { CATEGORIES_QUERY_KEY } from '../queries/use-categories-query';
 
-export function useCategoryMutations(supabase: SupabaseClient<Database>) {
+export function useCategoryMutations(supabase: SupabaseClient<Database, any, any>) {
   const queryClient = useQueryClient();
 
   const createCategory = useMutation({
