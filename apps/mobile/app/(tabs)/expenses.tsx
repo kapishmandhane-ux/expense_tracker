@@ -13,6 +13,7 @@ import { supabase } from '../../lib/supabase/secure-client';
 import { useExpensesQuery, useExpenseMutations } from '@repo/api';
 import { formatCurrency, formatExpenseDate } from '@repo/utils';
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 
 const FALLBACK_ITEMS = [
   { id: '1', title: 'Whole Foods Market', amount: 2450.0, date: '2026-08-19T10:30:00Z', cat: 'Groceries', color: '#10b981' },
@@ -23,6 +24,7 @@ const FALLBACK_ITEMS = [
 ];
 
 export default function MobileExpensesScreen() {
+  const router = useRouter();
   const { data: dbExpenses, isLoading, refetch } = useExpensesQuery(supabase);
   const { deleteExpense } = useExpenseMutations(supabase);
   const [refreshing, setRefreshing] = useState(false);
@@ -85,11 +87,17 @@ export default function MobileExpensesScreen() {
         <Text style={styles.recordCount}>{expenses.length} records</Text>
       </View>
 
-      {expenses.map((it) => (
+      {expenses.map((it: any) => (
         <TouchableOpacity
           key={it.id}
+          onPress={() => {
+            try {
+              Haptics.selectionAsync();
+            } catch {}
+            router.push(`/expense/${it.id}` as any);
+          }}
           onLongPress={() => handleDelete(it.id, it.title)}
-          activeOpacity={0.8}
+          activeOpacity={0.75}
         >
           <GlassCard style={styles.card}>
             <View style={styles.row}>

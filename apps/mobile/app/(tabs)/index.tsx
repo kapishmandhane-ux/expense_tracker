@@ -1,17 +1,20 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { GlassCard } from '../../components/glass-card';
 import { supabase } from '../../lib/supabase/secure-client';
 import { useExpensesQuery, useBudgetsQuery } from '@repo/api';
 import { formatCurrency, formatExpenseDate } from '@repo/utils';
 
 export default function MobileHomeScreen() {
+  const router = useRouter();
   const { data: dbExpenses } = useExpensesQuery(supabase);
   const { data: dbBudgets } = useBudgetsQuery(supabase);
 
   const expenses = dbExpenses || [];
-  const totalSpent = expenses.reduce((acc, e) => acc + Number(e.amount), 0) || 21500;
-  const totalBudget = dbBudgets?.reduce((acc, b) => acc + Number(b.monthly_limit), 0) || 50000;
+  const totalSpent = expenses.reduce((acc: number, e: any) => acc + Number(e.amount), 0) || 21500;
+  const totalBudget = dbBudgets?.reduce((acc: number, b: any) => acc + Number(b.monthly_limit), 0) || 50000;
   const remaining = Math.max(0, totalBudget - totalSpent);
 
   const recentExpenses = expenses.slice(0, 4);
@@ -36,26 +39,37 @@ export default function MobileHomeScreen() {
           <Text style={styles.emptyText}>No recent transactions recorded.</Text>
         </View>
       ) : (
-        recentExpenses.map((t) => (
-          <GlassCard key={t.id} style={styles.txCard}>
-            <View style={styles.txRow}>
-              <View style={styles.leftCol}>
-                <View
-                  style={[
-                    styles.catBadge,
-                    { backgroundColor: t.category?.color || '#64748b' },
-                  ]}
-                />
-                <View>
-                  <Text style={styles.txTitle}>{t.note || t.category?.name || 'Expense'}</Text>
-                  <Text style={styles.txCat}>
-                    {t.category?.name || 'General'} • {formatExpenseDate(t.spent_at)}
-                  </Text>
+        recentExpenses.map((t: any) => (
+          <TouchableOpacity
+            key={t.id}
+            activeOpacity={0.75}
+            onPress={() => {
+              try {
+                Haptics.selectionAsync();
+              } catch {}
+              router.push(`/expense/${t.id}` as any);
+            }}
+          >
+            <GlassCard style={styles.txCard}>
+              <View style={styles.txRow}>
+                <View style={styles.leftCol}>
+                  <View
+                    style={[
+                      styles.catBadge,
+                      { backgroundColor: t.category?.color || '#64748b' },
+                    ]}
+                  />
+                  <View>
+                    <Text style={styles.txTitle}>{t.note || t.category?.name || 'Expense'}</Text>
+                    <Text style={styles.txCat}>
+                      {t.category?.name || 'General'} • {formatExpenseDate(t.spent_at)}
+                    </Text>
+                  </View>
                 </View>
+                <Text style={styles.txAmount}>{formatCurrency(Number(t.amount))}</Text>
               </View>
-              <Text style={styles.txAmount}>{formatCurrency(Number(t.amount))}</Text>
-            </View>
-          </GlassCard>
+            </GlassCard>
+          </TouchableOpacity>
         ))
       )}
     </ScrollView>
