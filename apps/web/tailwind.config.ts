@@ -45,6 +45,17 @@ const config: Config = {
         input: 'var(--input)',
         ring: 'var(--ring)',
         obsidian: '#07090E',
+        canvas: '#010209',
+        surface: 'rgba(14, 19, 38, 0.7)',
+        brand: {
+          blue: '#0560E6',
+          violet: '#7943C6',
+          cyan: '#00F0FF',
+          crimson: '#FF4B6E',
+          emerald: '#10B981',
+          amber: '#F59E0B',
+          deep: '#2B295C',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -53,12 +64,21 @@ const config: Config = {
       },
       backdropBlur: {
         xs: '2px',
+        glass: '20px',
         '2xl': '24px',
         '3xl': '32px',
       },
+      boxShadow: {
+        'neon-blue': '0 0 25px rgba(5, 96, 230, 0.45)',
+        'neon-violet': '0 0 25px rgba(121, 67, 198, 0.45)',
+        'neon-cyan': '0 0 25px rgba(0, 240, 255, 0.45)',
+        'glass-edge': 'inset 0 1px 1px rgba(255, 255, 255, 0.15)',
+      },
       animation: {
         'pulse-slow': 'pulse 6s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'float': 'float 8s ease-in-out infinite',
+        float: 'float 8s ease-in-out infinite',
+        'float-delayed': 'float 8s ease-in-out 3s infinite',
+        'spin-slow': 'spin 12s linear infinite',
       },
       keyframes: {
         float: {
