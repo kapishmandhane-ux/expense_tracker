@@ -1,6 +1,6 @@
 import React from 'react';
 
-interface MetricCardProps {
+export interface MetricCardProps {
   title: string;
   amount: string;
   subtitle?: string;

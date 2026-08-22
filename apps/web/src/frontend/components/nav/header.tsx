@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { ThemeToggle } from '../theme-toggle';
-import { Bell, Sparkles, Plus, Wallet } from 'lucide-react';
+import { Bell, Plus, Wallet } from 'lucide-react';
 
 export function Header() {
   return (

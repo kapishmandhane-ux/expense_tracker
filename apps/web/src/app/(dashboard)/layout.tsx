@@ -1,6 +1,5 @@
-import React from 'react';
-import { Header } from '../../components/nav/header';
-import { Sidebar } from '../../components/nav/sidebar';
+import { Header } from '@/frontend/components/nav/header';
+import { Sidebar } from '@/frontend/components/nav/sidebar';
 
 export default function DashboardLayout({
   children,

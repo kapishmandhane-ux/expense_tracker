@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { Wallet } from 'lucide-react';
-import { ThemeToggle } from '../../components/theme-toggle';
+import { ThemeToggle } from '@/frontend/components/theme-toggle';
 
 export default function AuthLayout({
   children,
