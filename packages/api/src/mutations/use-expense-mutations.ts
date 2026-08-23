@@ -172,10 +172,40 @@ export function useExpenseMutations(supabase: SupabaseClient<Database, any, any>
     },
   });
 
+  const batchCreateExpenses = useMutation({
+    mutationFn: async (newExpenses: CreateExpenseInput[]) => {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData.user) throw new Error('Not authenticated');
+
+      const rows = newExpenses.map((exp) => ({
+        user_id: userData.user.id,
+        amount: exp.amount,
+        category_id: exp.category_id || null,
+        payment_method: exp.payment_method || 'upi',
+        note: exp.note || null,
+        spent_at: typeof exp.spent_at === 'string' ? exp.spent_at : exp.spent_at.toISOString(),
+        receipt_storage_path: exp.receipt_storage_path || null,
+      }));
+
+      const { data, error } = await supabase
+        .from('expenses')
+        .insert(rows)
+        .select(`*, category:categories(*)`);
+
+      if (error) throw error;
+      return (data as unknown as ExpenseWithCategory[]) || [];
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: EXPENSES_QUERY_KEY });
+    },
+  });
+
   return {
     createExpense,
     updateExpense,
     deleteExpense,
     bulkDeleteExpenses,
+    batchCreateExpenses,
   };
 }
+

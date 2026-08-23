@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Plus,
   Search,
   Download,
+  Upload,
   Trash2,
   Edit2,
   Tag,
@@ -14,11 +15,26 @@ import {
   AlertCircle,
   X,
   TrendingDown,
+  Receipt,
+  FileSpreadsheet,
+  Image as ImageIcon,
+  Loader2,
+  Paperclip,
+  CheckCircle2,
 } from 'lucide-react';
 import { formatCurrency, formatExpenseDate, getDateRangePreset } from '@repo/utils';
 import { createClient } from '@/backend/supabase/client';
-import { useExpensesQuery, useExpenseMutations, useRealtimeSync } from '@repo/api';
+import {
+  useExpensesQuery,
+  useCategoriesQuery,
+  useExpenseMutations,
+  useReceiptUpload,
+  useRealtimeSync,
+} from '@repo/api';
 import { ExpenseWithCategory } from '@repo/types';
+import { CreateExpenseInput } from '@repo/validators';
+import { ReceiptViewerModal } from '../components/receipt-viewer-modal';
+import { CsvImportModal } from '../components/csv-import-modal';
 
 const PRESET_CATEGORIES = [
   { id: 'cat-1', name: 'Food & Dining', color: '#f97316', icon: 'utensils' },
@@ -146,27 +162,6 @@ const FALLBACK_EXPENSES: ExpenseWithCategory[] = [
       created_at: '2026-08-16T19:00:00Z',
     },
   },
-  {
-    id: 'exp-6',
-    user_id: 'user-demo',
-    category_id: 'cat-6',
-    amount: 6500.0,
-    payment_method: 'credit_card',
-    spent_at: '2026-08-15T16:20:00Z',
-    note: 'Nike Pegasus 41 Running Shoes',
-    receipt_storage_path: null,
-    created_at: '2026-08-15T16:20:00Z',
-    updated_at: '2026-08-15T16:20:00Z',
-    category: {
-      id: 'cat-6',
-      user_id: 'user-demo',
-      name: 'Shopping',
-      color: '#eab308',
-      icon: 'shopping-bag',
-      is_system: true,
-      created_at: '2026-08-15T16:20:00Z',
-    },
-  },
 ];
 
 export function ExpensesView() {
@@ -174,7 +169,20 @@ export function ExpensesView() {
   useRealtimeSync(supabase);
 
   const { data: dbExpenses } = useExpensesQuery(supabase);
-  const { createExpense, updateExpense, deleteExpense, bulkDeleteExpenses } = useExpenseMutations(supabase);
+  const { data: dbCategories } = useCategoriesQuery(supabase);
+  const {
+    createExpense,
+    updateExpense,
+    deleteExpense,
+    bulkDeleteExpenses,
+    batchCreateExpenses,
+  } = useExpenseMutations(supabase);
+  const { uploadReceipt, getReceiptUrl, isUploading: isUploadingReceipt } = useReceiptUpload(supabase);
+
+  const categories = useMemo(() => {
+    if (dbCategories && dbCategories.length > 0) return dbCategories;
+    return PRESET_CATEGORIES;
+  }, [dbCategories]);
 
   const [localExpenses, setLocalExpenses] = useState<ExpenseWithCategory[]>(FALLBACK_EXPENSES);
   const rawExpenses = dbExpenses && dbExpenses.length > 0 ? dbExpenses : localExpenses;
@@ -188,8 +196,13 @@ export function ExpensesView() {
 
   // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ExpenseWithCategory | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [viewingReceipt, setViewingReceipt] = useState<{
+    url: string;
+    expense: { note?: string | null; amount?: number; spent_at?: string };
+  } | null>(null);
 
   // Form State
   const [formAmount, setFormAmount] = useState('');
@@ -197,6 +210,9 @@ export function ExpensesView() {
   const [formPaymentMethod, setFormPaymentMethod] = useState('upi');
   const [formNote, setFormNote] = useState('');
   const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10));
+  const [formReceiptPath, setFormReceiptPath] = useState<string | null>(null);
+  const [formReceiptPreview, setFormReceiptPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Filter Logic
   const filteredExpenses = useMemo(() => {
@@ -235,6 +251,20 @@ export function ExpensesView() {
     return filteredExpenses.reduce((sum, item) => sum + Number(item.amount), 0);
   }, [filteredExpenses]);
 
+  // Export URL computed with active filters
+  const exportUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    if (selectedCategory !== 'all') params.set('category', selectedCategory);
+    if (selectedPaymentMethod !== 'all') params.set('paymentMethod', selectedPaymentMethod);
+    if (datePreset !== 'all') {
+      const range = getDateRangePreset(datePreset);
+      params.set('startDate', range.start_date);
+      params.set('endDate', range.end_date);
+    }
+    const qs = params.toString();
+    return `/api/export${qs ? `?${qs}` : ''}`;
+  }, [selectedCategory, selectedPaymentMethod, datePreset]);
+
   const handleToggleSelect = (id: string) => {
     const next = new Set(selectedIds);
     if (next.has(id)) {
@@ -253,11 +283,26 @@ export function ExpensesView() {
     }
   };
 
+  // Handle receipt file drop or selection
+  const handleReceiptFile = async (file: File) => {
+    if (!file) return;
+    // Show instant local thumbnail preview
+    const localUrl = URL.createObjectURL(file);
+    setFormReceiptPreview(localUrl);
+
+    // Upload to Supabase Storage
+    const result = await uploadReceipt(file);
+    if (result.path) {
+      setFormReceiptPath(result.path);
+      setFormReceiptPreview(result.url);
+    }
+  };
+
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formAmount || isNaN(Number(formAmount))) return;
 
-    const chosenCat = PRESET_CATEGORIES.find((c) => c.id === formCategory) || PRESET_CATEGORIES[0];
+    const chosenCat = categories.find((c) => c.id === formCategory) || categories[0];
     const newRecord: ExpenseWithCategory = {
       id: 'exp-' + Date.now(),
       user_id: 'user-demo',
@@ -266,15 +311,15 @@ export function ExpensesView() {
       payment_method: formPaymentMethod as any,
       note: formNote || chosenCat.name,
       spent_at: new Date(formDate).toISOString(),
-      receipt_storage_path: null,
+      receipt_storage_path: formReceiptPath,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       category: {
         id: chosenCat.id,
         user_id: 'user-demo',
         name: chosenCat.name,
-        color: chosenCat.color,
-        icon: chosenCat.icon,
+        color: (chosenCat as any).color || '#64748b',
+        icon: (chosenCat as any).icon || 'tag',
         is_system: true,
         created_at: new Date().toISOString(),
       },
@@ -287,10 +332,13 @@ export function ExpensesView() {
       payment_method: formPaymentMethod as any,
       note: formNote || chosenCat.name,
       spent_at: new Date(formDate).toISOString(),
+      receipt_storage_path: formReceiptPath || undefined,
     });
 
     setFormAmount('');
     setFormNote('');
+    setFormReceiptPath(null);
+    setFormReceiptPreview(null);
     setIsAddModalOpen(false);
   };
 
@@ -298,7 +346,7 @@ export function ExpensesView() {
     e.preventDefault();
     if (!editingExpense || !formAmount || isNaN(Number(formAmount))) return;
 
-    const chosenCat = PRESET_CATEGORIES.find((c) => c.id === formCategory) || PRESET_CATEGORIES[0];
+    const chosenCat = categories.find((c) => c.id === formCategory) || categories[0];
     const updatedRecord: ExpenseWithCategory = {
       ...editingExpense,
       amount: parseFloat(formAmount),
@@ -306,12 +354,13 @@ export function ExpensesView() {
       payment_method: formPaymentMethod as any,
       note: formNote,
       spent_at: new Date(formDate).toISOString(),
+      receipt_storage_path: formReceiptPath,
       category: {
         id: chosenCat.id,
         user_id: 'user-demo',
         name: chosenCat.name,
-        color: chosenCat.color,
-        icon: chosenCat.icon,
+        color: (chosenCat as any).color || '#64748b',
+        icon: (chosenCat as any).icon || 'tag',
         is_system: true,
         created_at: new Date().toISOString(),
       },
@@ -325,9 +374,12 @@ export function ExpensesView() {
       payment_method: formPaymentMethod as any,
       note: formNote,
       spent_at: new Date(formDate).toISOString(),
+      receipt_storage_path: formReceiptPath || undefined,
     });
 
     setEditingExpense(null);
+    setFormReceiptPath(null);
+    setFormReceiptPreview(null);
   };
 
   const handleDeleteConfirm = () => {
@@ -353,10 +405,48 @@ export function ExpensesView() {
   const openEditModal = (exp: ExpenseWithCategory) => {
     setEditingExpense(exp);
     setFormAmount(exp.amount.toString());
-    setFormCategory(exp.category_id || 'cat-1');
+    setFormCategory(exp.category_id || categories[0]?.id || 'cat-1');
     setFormPaymentMethod(exp.payment_method);
     setFormNote(exp.note || '');
     setFormDate(new Date(exp.spent_at).toISOString().slice(0, 10));
+    setFormReceiptPath(exp.receipt_storage_path || null);
+    setFormReceiptPreview(getReceiptUrl(exp.receipt_storage_path));
+  };
+
+  const handleBatchImportSuccess = async (imported: CreateExpenseInput[]) => {
+    try {
+      await batchCreateExpenses.mutateAsync(imported);
+    } catch {
+      // Optimistic local add if offline
+      const newItems: ExpenseWithCategory[] = imported.map((imp, idx) => ({
+        id: 'imp-' + Date.now() + '-' + idx,
+        user_id: 'user-demo',
+        amount: imp.amount,
+        category_id: imp.category_id || 'cat-8',
+        payment_method: imp.payment_method || 'upi',
+        note: imp.note || 'Imported Transaction',
+        spent_at: typeof imp.spent_at === 'string' ? imp.spent_at : imp.spent_at.toISOString(),
+        receipt_storage_path: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        category: null,
+      }));
+      setLocalExpenses((prev) => [...newItems, ...prev]);
+    }
+  };
+
+  const openReceiptViewer = (exp: ExpenseWithCategory) => {
+    const url = getReceiptUrl(exp.receipt_storage_path);
+    if (url) {
+      setViewingReceipt({
+        url,
+        expense: {
+          note: exp.note,
+          amount: Number(exp.amount),
+          spent_at: exp.spent_at,
+        },
+      });
+    }
   };
 
   return (
@@ -368,28 +458,41 @@ export function ExpensesView() {
             Expenses Ledger
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Complete transaction history with instant filtering, editing, and CSV exports
+            Complete transaction history with receipt attachments, CSV import/export, and instant filtering
           </p>
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Import CSV Button */}
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold border border-slate-200/80 dark:border-white/10 bg-white/70 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-700 dark:text-slate-200 transition backdrop-blur-md shadow-sm cursor-pointer"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-indigo-500" />
+            <span>Import CSV</span>
+          </button>
+
+          {/* Export CSV Button */}
           <a
-            href="/api/export"
+            href={exportUrl}
             download
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold border border-slate-200/80 dark:border-white/10 bg-white/70 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-700 dark:text-slate-200 transition backdrop-blur-md shadow-sm"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold border border-slate-200/80 dark:border-white/10 bg-white/70 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-700 dark:text-slate-200 transition backdrop-blur-md shadow-sm cursor-pointer"
           >
             <Download className="h-4 w-4 text-emerald-500" />
             <span>Export CSV</span>
           </a>
 
+          {/* Add Expense Button */}
           <button
             onClick={() => {
               setFormAmount('');
               setFormNote('');
+              setFormReceiptPath(null);
+              setFormReceiptPreview(null);
               setFormDate(new Date().toISOString().slice(0, 10));
               setIsAddModalOpen(true);
             }}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white shadow-lg shadow-indigo-500/25 transition active:scale-[0.98]"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white shadow-lg shadow-indigo-500/25 transition active:scale-[0.98] cursor-pointer"
           >
             <Plus className="h-4 w-4" />
             <span>Add Expense</span>
@@ -449,39 +552,39 @@ export function ExpensesView() {
         <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
           {/* Search Bar */}
           <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search by note, merchant, or tag..."
+              placeholder="Search by merchant, note, or category..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm bg-slate-100 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+              className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="h-4 w-4" />
               </button>
             )}
           </div>
 
-          {/* Date Presets */}
+          {/* Quick Date Presets */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
             {[
               { id: 'all', label: 'All Time' },
               { id: 'today', label: 'Today' },
               { id: 'this_week', label: 'This Week' },
               { id: 'this_month', label: 'This Month' },
-              { id: 'last_30_days', label: '30 Days' },
+              { id: 'last_30_days', label: 'Last 30D' },
             ].map((preset) => (
               <button
                 key={preset.id}
                 onClick={() => setDatePreset(preset.id as any)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
                   datePreset === preset.id
-                    ? 'bg-indigo-500 text-white shadow-sm shadow-indigo-500/30'
+                    ? 'bg-indigo-600 text-white shadow-sm'
                     : 'bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10'
                 }`}
               >
@@ -491,67 +594,67 @@ export function ExpensesView() {
           </div>
         </div>
 
-        {/* Category Pills & Payment Method Selector */}
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between border-t border-slate-200/50 dark:border-white/5 pt-3">
-          {/* Categories */}
-          <div className="flex items-center gap-1.5 overflow-x-auto max-w-full pb-1">
-            <button
-              onClick={() => setSelectedCategory('all')}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition ${
-                selectedCategory === 'all'
-                  ? 'bg-slate-800 text-white dark:bg-white dark:text-slate-900 font-semibold'
-                  : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-              }`}
+        {/* Secondary Filter Dropdowns */}
+        <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-200/60 dark:border-white/10">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Category:</span>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500"
             >
-              All Categories
-            </button>
-            {PRESET_CATEGORIES.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(selectedCategory === cat.name ? 'all' : cat.name)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 whitespace-nowrap transition ${
-                  selectedCategory === cat.name
-                    ? 'bg-slate-800 text-white dark:bg-white dark:text-slate-900 font-semibold'
-                    : 'bg-slate-100/80 dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10'
-                }`}
-              >
-                <span
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: cat.color }}
-                />
-                {cat.name}
-              </button>
-            ))}
+              <option value="all">All Categories</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {/* Payment Method Select */}
-          <select
-            value={selectedPaymentMethod}
-            onChange={(e) => setSelectedPaymentMethod(e.target.value)}
-            className="px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          >
-            <option value="all">All Payment Methods</option>
-            {PAYMENT_METHODS.map((pm) => (
-              <option key={pm.id} value={pm.id}>
-                {pm.label}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Payment:</span>
+            <select
+              value={selectedPaymentMethod}
+              onChange={(e) => setSelectedPaymentMethod(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">All Modes</option>
+              {PAYMENT_METHODS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {(searchQuery || selectedCategory !== 'all' || selectedPaymentMethod !== 'all' || datePreset !== 'all') && (
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setSelectedCategory('all');
+                setSelectedPaymentMethod('all');
+                setDatePreset('all');
+              }}
+              className="text-xs text-rose-500 hover:text-rose-600 font-semibold ml-auto cursor-pointer"
+            >
+              Reset Filters
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Bulk Action Bar (Visible when rows selected) */}
+      {/* Bulk Action Bar */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center justify-between p-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-900 dark:text-indigo-200 animate-fade-in">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold">
-              {selectedIds.size} transaction{selectedIds.size > 1 ? 's' : ''} selected
-            </span>
+        <div className="glass-panel p-3 rounded-2xl flex items-center justify-between bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-500/30">
+          <div className="flex items-center gap-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+            <CheckSquare className="h-4 w-4 text-indigo-500" />
+            <span>{selectedIds.size} expense(s) selected</span>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleBulkDelete}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-500 hover:bg-rose-600 text-white shadow transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-500 hover:bg-rose-600 text-white shadow transition cursor-pointer"
             >
               <Trash2 className="h-3.5 w-3.5" />
               <span>Delete Selected</span>
@@ -590,6 +693,9 @@ export function ExpensesView() {
                 <th className="p-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Date
                 </th>
+                <th className="p-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-center">
+                  Receipt
+                </th>
                 <th className="p-4 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">
                   Amount
                 </th>
@@ -601,7 +707,7 @@ export function ExpensesView() {
             <tbody className="divide-y divide-slate-200/60 dark:divide-white/5">
               {filteredExpenses.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-12 text-center text-slate-400 dark:text-slate-500">
+                  <td colSpan={8} className="p-12 text-center text-slate-400 dark:text-slate-500">
                     <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
                     <p className="font-medium text-base">No expenses matched your filter criteria.</p>
                     <p className="text-xs text-slate-400 mt-1">Try resetting filters or adding a new expense record.</p>
@@ -612,6 +718,7 @@ export function ExpensesView() {
                   const isSelected = selectedIds.has(item.id);
                   const catColor = item.category?.color || '#64748b';
                   const catName = item.category?.name || 'Others';
+                  const hasReceipt = Boolean(item.receipt_storage_path);
 
                   return (
                     <tr
@@ -635,7 +742,7 @@ export function ExpensesView() {
                       <td className="p-4 font-medium text-slate-900 dark:text-white">
                         <div className="flex flex-col">
                           <span>{item.note || catName}</span>
-                          <span className="text-xs text-slate-400 dark:text-slate-500">
+                          <span className="text-xs text-slate-400 dark:text-slate-500 font-mono">
                             ID: {item.id.slice(0, 8)}
                           </span>
                         </div>
@@ -663,6 +770,21 @@ export function ExpensesView() {
                       <td className="p-4 text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">
                         {formatExpenseDate(item.spent_at)}
                       </td>
+                      {/* Receipt Indicator Cell */}
+                      <td className="p-4 text-center">
+                        {hasReceipt ? (
+                          <button
+                            onClick={() => openReceiptViewer(item)}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-xs font-medium transition cursor-pointer"
+                            title="View Receipt Lightbox"
+                          >
+                            <Receipt className="h-3.5 w-3.5" />
+                            <span>View</span>
+                          </button>
+                        ) : (
+                          <span className="text-slate-300 dark:text-slate-600 text-xs">—</span>
+                        )}
+                      </td>
                       <td className="p-4 font-bold text-slate-900 dark:text-white text-right whitespace-nowrap">
                         {formatCurrency(Number(item.amount))}
                       </td>
@@ -670,14 +792,14 @@ export function ExpensesView() {
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => openEditModal(item)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-500 hover:bg-indigo-500/10 transition"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-500 hover:bg-indigo-500/10 transition cursor-pointer"
                             title="Edit"
                           >
                             <Edit2 className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => setDeletingId(item.id)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition cursor-pointer"
                             title="Delete"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -693,10 +815,10 @@ export function ExpensesView() {
         </div>
       </div>
 
-      {/* Add Expense Modal */}
+      {/* Add Expense Modal with Drag-and-Drop Receipt Dropzone */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="glass-panel max-w-md w-full p-6 rounded-3xl space-y-5 shadow-2xl border border-slate-200/80 dark:border-white/10">
+          <div className="glass-panel max-w-md w-full p-6 rounded-3xl space-y-5 shadow-2xl border border-slate-200/80 dark:border-white/10 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-black text-slate-900 dark:text-white">Record New Expense</h3>
               <button
@@ -732,7 +854,7 @@ export function ExpensesView() {
                   onChange={(e) => setFormCategory(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  {PRESET_CATEGORIES.map((cat) => (
+                  {categories.map((cat) => (
                     <option key={cat.id} value={cat.id}>
                       {cat.name}
                     </option>
@@ -764,6 +886,7 @@ export function ExpensesView() {
                   </label>
                   <input
                     type="date"
+                    required
                     value={formDate}
                     onChange={(e) => setFormDate(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -777,28 +900,95 @@ export function ExpensesView() {
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Grocery store, Uber to airport..."
+                  placeholder="e.g., Trader Joe's grocery run"
                   value={formNote}
                   onChange={(e) => setFormNote(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/25 transition"
-                >
-                  Save Expense
-                </button>
+              {/* Receipt Dropzone Area */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                  Receipt Attachment (Optional)
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) handleReceiptFile(e.target.files[0]);
+                  }}
+                />
+
+                {formReceiptPreview ? (
+                  <div className="relative p-3 rounded-2xl bg-indigo-500/5 border border-indigo-500/20 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={formReceiptPreview}
+                        alt="Receipt preview"
+                        className="h-12 w-12 rounded-xl object-cover border border-indigo-500/30"
+                        onError={(e) => {
+                          (e.target as any).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/></svg>';
+                        }}
+                      />
+                      <div className="text-xs">
+                        <p className="font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                          <span>Receipt Attached</span>
+                        </p>
+                        <p className="text-slate-400 text-[11px] mt-0.5">Ready to save</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormReceiptPath(null);
+                        setFormReceiptPreview(null);
+                      }}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition"
+                      title="Remove Attachment"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (e.dataTransfer.files?.[0]) handleReceiptFile(e.dataTransfer.files[0]);
+                    }}
+                    className="border border-dashed border-slate-300 dark:border-white/20 hover:border-indigo-500 rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all hover:bg-indigo-500/[0.02]"
+                  >
+                    {isUploadingReceipt ? (
+                      <div className="flex items-center gap-2 text-xs text-indigo-500 py-1">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Uploading receipt to storage...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <Paperclip className="h-5 w-5 text-slate-400 mb-1" />
+                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          Click to upload or drag receipt image
+                        </p>
+                        <p className="text-[11px] text-slate-400">PNG, JPG, WEBP, or PDF (max 10MB)</p>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
+
+              <button
+                type="submit"
+                disabled={isUploadingReceipt}
+                className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg shadow-indigo-600/25 transition active:scale-[0.99] cursor-pointer disabled:opacity-50"
+              >
+                Save Expense Record
+              </button>
             </form>
           </div>
         </div>
@@ -807,7 +997,7 @@ export function ExpensesView() {
       {/* Edit Expense Modal */}
       {editingExpense && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="glass-panel max-w-md w-full p-6 rounded-3xl space-y-5 shadow-2xl border border-slate-200/80 dark:border-white/10">
+          <div className="glass-panel max-w-md w-full p-6 rounded-3xl space-y-5 shadow-2xl border border-slate-200/80 dark:border-white/10 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-black text-slate-900 dark:text-white">Edit Expense</h3>
               <button
@@ -842,7 +1032,7 @@ export function ExpensesView() {
                   onChange={(e) => setFormCategory(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  {PRESET_CATEGORIES.map((cat) => (
+                  {categories.map((cat) => (
                     <option key={cat.id} value={cat.id}>
                       {cat.name}
                     </option>
@@ -874,6 +1064,7 @@ export function ExpensesView() {
                   </label>
                   <input
                     type="date"
+                    required
                     value={formDate}
                     onChange={(e) => setFormDate(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -893,21 +1084,80 @@ export function ExpensesView() {
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setEditingExpense(null)}
-                  className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/25 transition"
-                >
-                  Update Expense
-                </button>
+              {/* Edit Receipt Dropzone Area */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                  Receipt Attachment
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) handleReceiptFile(e.target.files[0]);
+                  }}
+                />
+
+                {formReceiptPreview ? (
+                  <div className="relative p-3 rounded-2xl bg-indigo-500/5 border border-indigo-500/20 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={formReceiptPreview}
+                        alt="Receipt"
+                        className="h-12 w-12 rounded-xl object-cover border border-indigo-500/30"
+                        onError={(e) => {
+                          (e.target as any).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/></svg>';
+                        }}
+                      />
+                      <div className="text-xs">
+                        <p className="font-semibold text-slate-900 dark:text-white">Receipt Attached</p>
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-indigo-500 hover:underline text-[11px] mt-0.5 block"
+                        >
+                          Replace File
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormReceiptPath(null);
+                        setFormReceiptPreview(null);
+                      }}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition"
+                      title="Remove Attachment"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (e.dataTransfer.files?.[0]) handleReceiptFile(e.dataTransfer.files[0]);
+                    }}
+                    className="border border-dashed border-slate-300 dark:border-white/20 hover:border-indigo-500 rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all hover:bg-indigo-500/[0.02]"
+                  >
+                    <Paperclip className="h-5 w-5 text-slate-400 mb-1" />
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Upload receipt image or PDF
+                    </p>
+                  </div>
+                )}
               </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg shadow-indigo-600/25 transition active:scale-[0.99] cursor-pointer"
+              >
+                Save Changes
+              </button>
             </form>
           </div>
         </div>
@@ -916,31 +1166,51 @@ export function ExpensesView() {
       {/* Delete Confirmation Modal */}
       {deletingId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="glass-panel max-w-sm w-full p-6 rounded-3xl space-y-4 shadow-2xl border border-rose-500/30">
-            <div className="flex items-center gap-3 text-rose-500">
-              <AlertCircle className="h-6 w-6" />
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Delete Transaction</h3>
+          <div className="glass-panel max-w-sm w-full p-6 rounded-3xl space-y-4 shadow-2xl border border-slate-200/80 dark:border-white/10 text-center">
+            <div className="h-12 w-12 mx-auto rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center">
+              <Trash2 className="h-6 w-6" />
             </div>
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              Are you sure you want to delete this expense? This action cannot be undone.
-            </p>
-            <div className="flex items-center justify-end gap-3 pt-2">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Delete Expense Record?</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                This transaction will be permanently removed from your history. This action cannot be undone.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 pt-2">
               <button
                 onClick={() => setDeletingId(null)}
-                className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5"
+                className="py-2.5 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 font-semibold text-xs transition"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteConfirm}
-                className="px-4 py-2 rounded-xl text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow transition"
+                className="py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-md shadow-rose-600/20 transition"
               >
-                Delete
+                Confirm Delete
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Receipt Lightbox Viewer */}
+      {viewingReceipt && (
+        <ReceiptViewerModal
+          isOpen={Boolean(viewingReceipt)}
+          onClose={() => setViewingReceipt(null)}
+          receiptUrl={viewingReceipt.url}
+          expense={viewingReceipt.expense}
+        />
+      )}
+
+      {/* CSV Bank Statement Importer Modal */}
+      <CsvImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        categories={categories}
+        onImportSuccess={handleBatchImportSuccess}
+      />
     </div>
   );
 }

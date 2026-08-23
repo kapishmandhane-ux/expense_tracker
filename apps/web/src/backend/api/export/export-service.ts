@@ -101,19 +101,24 @@ export async function handleExpenseCsvExport(request: NextRequest) {
   }
 
   // Generate CSV Rows
-  const headers = ['Transaction ID', 'Date', 'Category', 'Note / Merchant', 'Payment Method', 'Amount (INR)'];
+  const headers = ['Transaction ID', 'Date', 'Category', 'Note / Merchant', 'Payment Method', 'Receipt Attached', 'Amount (INR)'];
   const rows = records.map((r) => [
     `"${r.id}"`,
     `"${new Date(r.spent_at).toISOString().slice(0, 10)}"`,
     `"${(r.category?.name || 'Uncategorized').replace(/"/g, '""')}"`,
     `"${(r.note || '').replace(/"/g, '""')}"`,
     `"${r.payment_method?.toUpperCase() || 'UPI'}"`,
+    `"${r.receipt_storage_path ? 'YES' : 'NO'}"`,
     Number(r.amount).toFixed(2),
   ]);
 
+  // Compute Total
+  const totalAmount = records.reduce((sum, r) => sum + Number(r.amount), 0);
+  rows.push(['"TOTAL"', '""', '""', '""', '""', '""', totalAmount.toFixed(2)]);
+
   // UTF-8 BOM (\uFEFF) for Excel unicode compatibility
   const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((row) => row.join(','))].join('\r\n');
-  const filename = `expenses_export_${new Date().toISOString().slice(0, 10)}.csv`;
+  const filename = `spendy_expenses_export_${new Date().toISOString().slice(0, 10)}.csv`;
 
   return new NextResponse(csvContent, {
     status: 200,

@@ -6,3 +6,4 @@ export * from './queries/use-realtime-sync';
 export * from './mutations/use-expense-mutations';
 export * from './mutations/use-category-mutations';
 export * from './mutations/use-budget-mutations';
+export * from './mutations/use-receipt-upload';

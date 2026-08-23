@@ -5,6 +5,8 @@ export { ThemeProvider } from './components/theme-provider';
 export { ThemeToggle } from './components/theme-toggle';
 export { Header } from './components/nav/header';
 export { Sidebar } from './components/nav/sidebar';
+export { ReceiptViewerModal } from './components/receipt-viewer-modal';
+export { CsvImportModal } from './components/csv-import-modal';
 
 // Views
 export { LandingView } from './views/landing-view';
