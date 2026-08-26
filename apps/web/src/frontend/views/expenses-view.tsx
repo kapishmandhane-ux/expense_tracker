@@ -21,6 +21,7 @@ import {
   Loader2,
   Paperclip,
   CheckCircle2,
+  Sparkles,
 } from 'lucide-react';
 import { formatCurrency, formatExpenseDate, getDateRangePreset } from '@repo/utils';
 import { createClient } from '@/backend/supabase/client';
@@ -35,6 +36,7 @@ import { ExpenseWithCategory } from '@repo/types';
 import { CreateExpenseInput } from '@repo/validators';
 import { ReceiptViewerModal } from '../components/receipt-viewer-modal';
 import { CsvImportModal } from '../components/csv-import-modal';
+import { AiReceiptScannerModal } from '../components/ai-receipt-scanner-modal';
 
 const PRESET_CATEGORIES = [
   { id: 'cat-1', name: 'Food & Dining', color: '#f97316', icon: 'utensils' },
@@ -197,6 +199,7 @@ export function ExpensesView() {
   // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isAiScannerOpen, setIsAiScannerOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ExpenseWithCategory | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [viewingReceipt, setViewingReceipt] = useState<{
@@ -435,6 +438,53 @@ export function ExpensesView() {
     }
   };
 
+  const handleAiScanSaveExpense = async (input: CreateExpenseInput, file?: File) => {
+    let storagePath: string | null = null;
+    if (file) {
+      const uploadRes = await uploadReceipt(file);
+      if (uploadRes.path) {
+        storagePath = uploadRes.path;
+      }
+    }
+
+    const chosenCat = categories.find((c) => c.id === input.category_id) || categories[0];
+    const newRecord: ExpenseWithCategory = {
+      id: 'exp-' + Date.now(),
+      user_id: 'user-demo',
+      amount: input.amount,
+      category_id: chosenCat.id,
+      payment_method: input.payment_method || 'upi',
+      note: input.note || chosenCat.name,
+      spent_at: typeof input.spent_at === 'string' ? input.spent_at : input.spent_at.toISOString(),
+      receipt_storage_path: storagePath,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      category: {
+        id: chosenCat.id,
+        user_id: 'user-demo',
+        name: chosenCat.name,
+        color: (chosenCat as any).color || '#64748b',
+        icon: (chosenCat as any).icon || 'tag',
+        is_system: true,
+        created_at: new Date().toISOString(),
+      },
+    };
+
+    setLocalExpenses((prev) => [newRecord, ...prev]);
+    try {
+      await createExpense.mutateAsync({
+        amount: input.amount,
+        category_id: chosenCat.id,
+        payment_method: input.payment_method || 'upi',
+        note: input.note || chosenCat.name,
+        spent_at: typeof input.spent_at === 'string' ? input.spent_at : input.spent_at.toISOString(),
+        receipt_storage_path: storagePath || undefined,
+      });
+    } catch (err) {
+      console.warn('Saved expense locally in offline/fallback mode:', err);
+    }
+  };
+
   const openReceiptViewer = (exp: ExpenseWithCategory) => {
     const url = getReceiptUrl(exp.receipt_storage_path);
     if (url) {
@@ -463,6 +513,15 @@ export function ExpensesView() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* AI Scan Receipt Button */}
+          <button
+            onClick={() => setIsAiScannerOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold border border-indigo-500/30 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-indigo-500/10 hover:from-indigo-500/20 hover:to-purple-500/20 text-indigo-600 dark:text-indigo-300 transition backdrop-blur-md shadow-sm cursor-pointer"
+          >
+            <Sparkles className="h-4 w-4 text-indigo-500 animate-pulse" />
+            <span>AI Scan Receipt</span>
+          </button>
+
           {/* Import CSV Button */}
           <button
             onClick={() => setIsImportModalOpen(true)}
@@ -1210,6 +1269,14 @@ export function ExpensesView() {
         onClose={() => setIsImportModalOpen(false)}
         categories={categories}
         onImportSuccess={handleBatchImportSuccess}
+      />
+
+      {/* AI Receipt Scanner Modal */}
+      <AiReceiptScannerModal
+        isOpen={isAiScannerOpen}
+        onClose={() => setIsAiScannerOpen(false)}
+        categories={categories}
+        onSaveExpense={handleAiScanSaveExpense}
       />
     </div>
   );

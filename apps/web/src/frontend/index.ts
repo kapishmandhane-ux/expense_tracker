@@ -7,6 +7,7 @@ export { Header } from './components/nav/header';
 export { Sidebar } from './components/nav/sidebar';
 export { ReceiptViewerModal } from './components/receipt-viewer-modal';
 export { CsvImportModal } from './components/csv-import-modal';
+export { AiReceiptScannerModal } from './components/ai-receipt-scanner-modal';
 
 // Views
 export { LandingView } from './views/landing-view';

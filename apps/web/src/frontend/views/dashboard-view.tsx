@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { MetricCard } from '../components/metric-card';
 import {
   Wallet,
@@ -17,12 +17,22 @@ import {
   ShoppingBag,
   Activity,
   Tag,
+  Sparkles,
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatCurrency, formatExpenseDate, getDaysRemainingInMonth } from '@repo/utils';
 import { createClient } from '@/backend/supabase/client';
-import { useExpensesQuery, useBudgetsQuery, useRealtimeSync } from '@repo/api';
+import {
+  useExpensesQuery,
+  useBudgetsQuery,
+  useCategoriesQuery,
+  useExpenseMutations,
+  useReceiptUpload,
+  useRealtimeSync,
+} from '@repo/api';
 import { ExpenseWithCategory } from '@repo/types';
+import { CreateExpenseInput } from '@repo/validators';
+import { AiReceiptScannerModal } from '../components/ai-receipt-scanner-modal';
 
 const CATEGORY_ICON_MAP: Record<string, any> = {
   'Food & Dining': Utensils,
@@ -108,8 +118,28 @@ export function DashboardView() {
 
   const { data: dbExpenses } = useExpensesQuery(supabase);
   const { data: dbBudgets } = useBudgetsQuery(supabase);
+  const { data: dbCategories } = useCategoriesQuery(supabase);
+  const { createExpense } = useExpenseMutations(supabase);
+  const { uploadReceipt } = useReceiptUpload(supabase);
 
-  const expenses = dbExpenses && dbExpenses.length > 0 ? dbExpenses : FALLBACK_EXPENSES;
+  const [isAiScannerOpen, setIsAiScannerOpen] = useState(false);
+  const [localExpenses, setLocalExpenses] = useState<ExpenseWithCategory[]>(FALLBACK_EXPENSES);
+
+  const categories = useMemo(() => {
+    if (dbCategories && dbCategories.length > 0) return dbCategories;
+    return [
+      { id: 'cat-1', name: 'Food & Dining' },
+      { id: 'cat-2', name: 'Groceries' },
+      { id: 'cat-3', name: 'Transportation' },
+      { id: 'cat-4', name: 'Bills & Utilities' },
+      { id: 'cat-5', name: 'Entertainment' },
+      { id: 'cat-6', name: 'Shopping' },
+      { id: 'cat-7', name: 'Health & Fitness' },
+      { id: 'cat-8', name: 'Others' },
+    ];
+  }, [dbCategories]);
+
+  const expenses = dbExpenses && dbExpenses.length > 0 ? dbExpenses : localExpenses;
   const recentTransactions = expenses.slice(0, 5);
 
   const totalSpent = useMemo(() => {
@@ -126,6 +156,53 @@ export function DashboardView() {
   const daysRemaining = getDaysRemainingInMonth();
   const dailySpendingVelocity = (totalSpent / Math.max(1, 30 - daysRemaining)).toFixed(0);
 
+  const handleAiScanSaveExpense = async (input: CreateExpenseInput, file?: File) => {
+    let storagePath: string | null = null;
+    if (file) {
+      const uploadRes = await uploadReceipt(file);
+      if (uploadRes.path) {
+        storagePath = uploadRes.path;
+      }
+    }
+
+    const chosenCat = categories.find((c) => c.id === input.category_id) || categories[0];
+    const newRecord: ExpenseWithCategory = {
+      id: 'exp-' + Date.now(),
+      user_id: 'user-demo',
+      amount: input.amount,
+      category_id: chosenCat.id,
+      payment_method: input.payment_method || 'upi',
+      note: input.note || chosenCat.name,
+      spent_at: typeof input.spent_at === 'string' ? input.spent_at : input.spent_at.toISOString(),
+      receipt_storage_path: storagePath,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      category: {
+        id: chosenCat.id,
+        user_id: 'user-demo',
+        name: chosenCat.name,
+        color: (chosenCat as any).color || '#64748b',
+        icon: (chosenCat as any).icon || 'tag',
+        is_system: true,
+        created_at: new Date().toISOString(),
+      },
+    };
+
+    setLocalExpenses((prev) => [newRecord, ...prev]);
+    try {
+      await createExpense.mutateAsync({
+        amount: input.amount,
+        category_id: chosenCat.id,
+        payment_method: input.payment_method || 'upi',
+        note: input.note || chosenCat.name,
+        spent_at: typeof input.spent_at === 'string' ? input.spent_at : input.spent_at.toISOString(),
+        receipt_storage_path: storagePath || undefined,
+      });
+    } catch (err) {
+      console.warn('Saved locally in offline/fallback mode:', err);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Top Banner / Welcome */}
@@ -135,11 +212,19 @@ export function DashboardView() {
             Financial Overview
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Real-time multi-account tracking and budget burn telemetry
+            Real-time multi-account tracking, AI receipt scanner, and budget burn telemetry
           </p>
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsAiScannerOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-indigo-500/30 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-indigo-500/10 hover:from-indigo-500/20 hover:to-purple-500/20 text-indigo-600 dark:text-indigo-300 font-semibold text-xs transition backdrop-blur-md shadow-sm cursor-pointer"
+          >
+            <Sparkles className="h-4 w-4 text-indigo-500 animate-pulse" />
+            <span>AI Scan Receipt</span>
+          </button>
+
           <Link
             href="/expenses"
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white font-semibold text-xs shadow-lg shadow-indigo-500/25 transition active:scale-[0.98]"
@@ -297,6 +382,14 @@ export function DashboardView() {
           </div>
         </div>
       </div>
+
+      {/* AI Receipt Scanner Modal */}
+      <AiReceiptScannerModal
+        isOpen={isAiScannerOpen}
+        onClose={() => setIsAiScannerOpen(false)}
+        categories={categories}
+        onSaveExpense={handleAiScanSaveExpense}
+      />
     </div>
   );
 }
