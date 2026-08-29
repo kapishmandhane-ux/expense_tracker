@@ -13,6 +13,10 @@ import {
   TrendingDown,
 } from 'lucide-react';
 
+import { useCurrency } from '../currency-provider';
+import { useBudgetsQuery, useExpensesQuery } from '@repo/api';
+import { createClient } from '@/backend/supabase/client';
+
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Expenses', href: '/expenses', icon: ReceiptText },
@@ -23,6 +27,21 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { format } = useCurrency();
+  const supabase = React.useMemo(() => createClient(), []);
+  const { data: dbExpenses } = useExpensesQuery(supabase);
+  const { data: dbBudgets } = useBudgetsQuery(supabase);
+
+  const totalSpent = React.useMemo(() => {
+    return (dbExpenses || []).reduce((sum, item) => sum + Number(item.amount), 0) || 12450;
+  }, [dbExpenses]);
+
+  const totalLimit = React.useMemo(() => {
+    return (dbBudgets || []).reduce((sum, item) => sum + Number(item.monthly_limit), 0) || 45000;
+  }, [dbBudgets]);
+
+  const pct = Math.min(100, Math.round((totalSpent / totalLimit) * 100));
+  const remaining = Math.max(0, totalLimit - totalSpent);
 
   return (
     <aside className="w-64 border-r border-white/60 dark:border-white/[0.08] glass-nav flex flex-col justify-between p-4 min-h-[calc(100vh-4rem)]">
@@ -67,18 +86,18 @@ export function Sidebar() {
           <div className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-300">
             <span className="flex items-center gap-1">
               <TrendingDown className="h-3.5 w-3.5 text-emerald-500" />
-              August Budget
+              Monthly Budget
             </span>
-            <span className="text-indigo-600 dark:text-indigo-400">42%</span>
+            <span className="text-indigo-600 dark:text-indigo-400 font-bold">{pct}%</span>
           </div>
           <div className="w-full bg-slate-200 dark:bg-white/10 h-1.5 rounded-full mt-2.5 overflow-hidden">
             <div
-              className="bg-gradient-to-r from-indigo-500 to-sky-400 h-full rounded-full"
-              style={{ width: '42%' }}
+              className="bg-gradient-to-r from-indigo-500 to-sky-400 h-full rounded-full transition-all duration-500"
+              style={{ width: `${pct}%` }}
             />
           </div>
           <p className="text-[11px] text-slate-400 dark:text-slate-400 mt-2 font-medium">
-            ₹28,500 left of ₹50,000 limit
+            {format(remaining)} left of {format(totalLimit)} limit
           </p>
         </div>
       </div>
