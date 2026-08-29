@@ -37,6 +37,8 @@ import { CreateExpenseInput } from '@repo/validators';
 import { ReceiptViewerModal } from '../components/receipt-viewer-modal';
 import { CsvImportModal } from '../components/csv-import-modal';
 import { AiReceiptScannerModal } from '../components/ai-receipt-scanner-modal';
+import { CategoryManagerModal } from '../components/category-manager-modal';
+import { useCurrency } from '../components/currency-provider';
 
 const PRESET_CATEGORIES = [
   { id: 'cat-1', name: 'Food & Dining', color: '#f97316', icon: 'utensils' },
@@ -170,6 +172,7 @@ export function ExpensesView() {
   const supabase = useMemo(() => createClient(), []);
   useRealtimeSync(supabase);
 
+  const { format, symbol } = useCurrency();
   const { data: dbExpenses } = useExpensesQuery(supabase);
   const { data: dbCategories } = useCategoriesQuery(supabase);
   const {
@@ -200,6 +203,7 @@ export function ExpensesView() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isAiScannerOpen, setIsAiScannerOpen] = useState(false);
+  const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ExpenseWithCategory | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [viewingReceipt, setViewingReceipt] = useState<{
@@ -567,7 +571,7 @@ export function ExpensesView() {
               Filtered Total Spend
             </p>
             <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
-              {formatCurrency(totalFilteredSpend)}
+              {format(totalFilteredSpend)}
             </p>
           </div>
           <div className="p-3 rounded-xl bg-indigo-500/10 text-indigo-500">
@@ -596,8 +600,8 @@ export function ExpensesView() {
             </p>
             <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
               {filteredExpenses.length > 0
-                ? formatCurrency(totalFilteredSpend / filteredExpenses.length)
-                : '₹0'}
+                ? format(totalFilteredSpend / filteredExpenses.length)
+                : format(0)}
             </p>
           </div>
           <div className="p-3 rounded-xl bg-pink-500/10 text-pink-500">
@@ -669,6 +673,13 @@ export function ExpensesView() {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={() => setIsCategoryManagerOpen(true)}
+              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-semibold cursor-pointer"
+            >
+              Manage
+            </button>
           </div>
 
           <div className="flex items-center gap-2">
@@ -845,7 +856,7 @@ export function ExpensesView() {
                         )}
                       </td>
                       <td className="p-4 font-bold text-slate-900 dark:text-white text-right whitespace-nowrap">
-                        {formatCurrency(Number(item.amount))}
+                        {format(Number(item.amount))}
                       </td>
                       <td className="p-4 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -1277,6 +1288,13 @@ export function ExpensesView() {
         onClose={() => setIsAiScannerOpen(false)}
         categories={categories}
         onSaveExpense={handleAiScanSaveExpense}
+      />
+
+      {/* Category Manager Modal */}
+      <CategoryManagerModal
+        isOpen={isCategoryManagerOpen}
+        onClose={() => setIsCategoryManagerOpen(false)}
+        categories={categories}
       />
     </div>
   );

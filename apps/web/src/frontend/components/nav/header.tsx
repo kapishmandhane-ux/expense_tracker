@@ -1,11 +1,30 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { ThemeToggle } from '../theme-toggle';
-import { Bell, Plus, Wallet } from 'lucide-react';
+import { Bell, Plus, Wallet, ChevronDown, Check } from 'lucide-react';
+import { useCurrency } from '../currency-provider';
+import { SupportedCurrencyCode } from '@repo/utils';
 
 export function Header() {
+  const { currency, setCurrency, currencyList } = useCurrency();
+  const [isCurrencyOpen, setIsCurrencyOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsCurrencyOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const currentCurrencyObj = currencyList.find((c) => c.code === currency) || currencyList[0];
+
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between px-6 glass-nav border-b border-white/60 dark:border-white/[0.08]">
       <div className="flex items-center gap-3">
@@ -23,6 +42,56 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-3">
+        {/* Currency Switcher Dropdown */}
+        <div className="relative" ref={dropdownRef}>
+          <button
+            onClick={() => setIsCurrencyOpen((prev) => !prev)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/40 dark:bg-white/[0.06] backdrop-blur-lg border border-white/50 dark:border-white/10 hover:bg-white/60 dark:hover:bg-white/10 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer shadow-xs"
+            title="Change Currency"
+          >
+            <span>{currentCurrencyObj.flag}</span>
+            <span className="font-mono">{currentCurrencyObj.code}</span>
+            <span className="text-slate-400 text-[11px] font-normal">({currentCurrencyObj.symbol})</span>
+            <ChevronDown className="h-3 w-3 text-slate-400" />
+          </button>
+
+          {isCurrencyOpen && (
+            <div className="absolute right-0 mt-2 w-48 rounded-2xl glass-panel p-1.5 shadow-2xl border border-slate-200/80 dark:border-white/10 z-50 animate-fade-in divide-y divide-slate-100 dark:divide-white/5">
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Select Currency
+              </div>
+              <div className="py-1 max-h-60 overflow-y-auto space-y-0.5">
+                {currencyList.map((c) => {
+                  const isSelected = c.code === currency;
+                  return (
+                    <button
+                      key={c.code}
+                      onClick={() => {
+                        setCurrency(c.code as SupportedCurrencyCode);
+                        setIsCurrencyOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white'
+                          : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span>{c.flag}</span>
+                        <span>{c.code}</span>
+                        <span className={`text-[11px] ${isSelected ? 'text-indigo-100' : 'text-slate-400'}`}>
+                          ({c.symbol})
+                        </span>
+                      </div>
+                      {isSelected && <Check className="h-3.5 w-3.5 text-white" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
         <Link
           href="/expenses"
           className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/25 transition-all hover:scale-[1.02]"

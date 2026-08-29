@@ -3,11 +3,13 @@ export { MetricCard } from './components/metric-card';
 export { QueryProvider } from './components/query-provider';
 export { ThemeProvider } from './components/theme-provider';
 export { ThemeToggle } from './components/theme-toggle';
+export { CurrencyProvider, useCurrency } from './components/currency-provider';
 export { Header } from './components/nav/header';
 export { Sidebar } from './components/nav/sidebar';
 export { ReceiptViewerModal } from './components/receipt-viewer-modal';
 export { CsvImportModal } from './components/csv-import-modal';
 export { AiReceiptScannerModal } from './components/ai-receipt-scanner-modal';
+export { CategoryManagerModal, ICON_MAP, COLOR_PALETTE } from './components/category-manager-modal';
 
 // Views
 export { LandingView } from './views/landing-view';

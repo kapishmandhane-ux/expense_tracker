@@ -1,11 +1,17 @@
 export const SUPPORTED_CURRENCIES = {
-  INR: { code: 'INR', symbol: '₹', locale: 'en-IN', name: 'Indian Rupee' },
-  USD: { code: 'USD', symbol: '$', locale: 'en-US', name: 'US Dollar' },
-  EUR: { code: 'EUR', symbol: '€', locale: 'de-DE', name: 'Euro' },
-  GBP: { code: 'GBP', symbol: '£', locale: 'en-GB', name: 'British Pound' },
+  INR: { code: 'INR', symbol: '₹', locale: 'en-IN', name: 'Indian Rupee', flag: '🇮🇳' },
+  USD: { code: 'USD', symbol: '$', locale: 'en-US', name: 'US Dollar', flag: '🇺🇸' },
+  EUR: { code: 'EUR', symbol: '€', locale: 'de-DE', name: 'Euro', flag: '🇪🇺' },
+  GBP: { code: 'GBP', symbol: '£', locale: 'en-GB', name: 'British Pound', flag: '🇬🇧' },
+  JPY: { code: 'JPY', symbol: '¥', locale: 'ja-JP', name: 'Japanese Yen', flag: '🇯🇵' },
+  CAD: { code: 'CAD', symbol: 'CA$', locale: 'en-CA', name: 'Canadian Dollar', flag: '🇨🇦' },
+  AUD: { code: 'AUD', symbol: 'AU$', locale: 'en-AU', name: 'Australian Dollar', flag: '🇦🇺' },
+  AED: { code: 'AED', symbol: 'AED', locale: 'ar-AE', name: 'UAE Dirham', flag: '🇦🇪' },
 } as const;
 
 export type SupportedCurrencyCode = keyof typeof SUPPORTED_CURRENCIES;
+
+export const CURRENCY_LIST = Object.values(SUPPORTED_CURRENCIES);
 
 /**
  * Format standard currency string e.g. "₹1,24,500.00" or "$12,450.00"
@@ -27,7 +33,7 @@ export function formatCurrency(
     return formatCompactCurrency(safeAmount, currencyCode);
   }
 
-  const fractionDigits = options?.showDecimals === false ? 0 : 2;
+  const fractionDigits = options?.showDecimals === false || config.code === 'JPY' ? 0 : 2;
 
   try {
     return new Intl.NumberFormat(config.locale, {
@@ -85,4 +91,12 @@ export function parseCurrencyInput(value: string): number {
   const clean = value.replace(/[^0-9.-]/g, '');
   const parsed = parseFloat(clean);
   return isNaN(parsed) ? 0 : parsed;
+}
+
+/**
+ * Get currency symbol for a given currency code
+ */
+export function getCurrencySymbol(currencyCode: string = 'INR'): string {
+  const config = SUPPORTED_CURRENCIES[currencyCode as SupportedCurrencyCode];
+  return config ? config.symbol : '₹';
 }

@@ -9,8 +9,9 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/backend/supabase/client';
 import { useExpensesQuery, useCategoriesQuery, useRealtimeSync } from '@repo/api';
-import { calculateCategorySummaries, formatCurrency } from '@repo/utils';
+import { calculateCategorySummaries } from '@repo/utils';
 import { ExpenseWithCategory } from '@repo/types';
+import { useCurrency } from '../components/currency-provider';
 
 const PRESET_CATEGORIES = [
   { id: 'cat-1', user_id: 'user-demo', name: 'Food & Dining', color: '#f97316', icon: 'utensils', is_system: true, created_at: '' },
@@ -36,6 +37,7 @@ export function AnalyticsView() {
   const supabase = useMemo(() => createClient(), []);
   useRealtimeSync(supabase);
 
+  const { format } = useCurrency();
   const { data: dbExpenses } = useExpensesQuery(supabase);
   const { data: dbCategories } = useCategoriesQuery(supabase);
 
@@ -58,56 +60,52 @@ export function AnalyticsView() {
     const map = new Map<string, { amount: number; count: number; color: string }>();
     const colors: Record<string, string> = {
       upi: '#6366f1',
-      credit_card: '#0ea5e9',
-      debit_card: '#ec4899',
-      net_banking: '#8b5cf6',
+      credit_card: '#ec4899',
+      debit_card: '#06b6d4',
+      net_banking: '#eab308',
       cash: '#10b981',
       other: '#64748b',
     };
 
     expenses.forEach((exp) => {
-      const mode = exp.payment_method || 'upi';
-      const cur = map.get(mode) || { amount: 0, count: 0, color: colors[mode] || '#64748b' };
-      cur.amount += Number(exp.amount);
-      cur.count += 1;
-      map.set(mode, cur);
+      const mode = exp.payment_method || 'other';
+      const existing = map.get(mode) || { amount: 0, count: 0, color: colors[mode] || '#64748b' };
+      existing.amount += Number(exp.amount);
+      existing.count += 1;
+      map.set(mode, existing);
     });
 
-    const res: Array<{ mode: string; percentage: number; amount: number; color: string }> = [];
-    map.forEach((val, key) => {
-      res.push({
-        mode: key.toUpperCase().replace('_', ' '),
-        percentage: totalSpend > 0 ? Math.round((val.amount / totalSpend) * 100) : 0,
-        amount: val.amount,
-        color: val.color,
-      });
-    });
-
-    return res.sort((a, b) => b.amount - a.amount);
+    return Array.from(map.entries()).map(([mode, data]) => ({
+      mode: mode.toUpperCase().replace('_', ' '),
+      amount: data.amount,
+      count: data.count,
+      color: data.color,
+      percentage: totalSpend > 0 ? Math.round((data.amount / totalSpend) * 100) : 0,
+    }));
   }, [expenses, totalSpend]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-          Spending Analytics & Trends
+          Spending Analytics & Category Breakdown
         </h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Deep behavioral insights, category distribution, and payment velocity
+          Historical distribution, payment methods, and category share
         </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
         <MetricCard
           title="Average Transaction"
-          amount={formatCurrency(averageTransaction)}
+          amount={format(averageTransaction)}
           subtitle={`${expenses.length} transactions recorded`}
           icon={<TrendingUp className="h-5 w-5 text-indigo-500" />}
           accentColor="rgba(99, 102, 241, 0.2)"
         />
         <MetricCard
           title="Total Expenditure"
-          amount={formatCurrency(totalSpend)}
+          amount={format(totalSpend)}
           subtitle="All recorded historical entries"
           icon={<Layers className="h-5 w-5 text-sky-500" />}
           accentColor="rgba(14, 165, 233, 0.2)"
@@ -140,7 +138,7 @@ export function AnalyticsView() {
                     <span className="text-slate-700 dark:text-slate-300">{item.category_name}</span>
                   </div>
                   <span className="text-slate-900 dark:text-white font-bold">
-                    {formatCurrency(item.total_amount)} ({item.percentage}%)
+                    {format(item.total_amount)} ({item.percentage}%)
                   </span>
                 </div>
                 <div className="h-2 w-full bg-slate-200 dark:bg-white/10 rounded-full overflow-hidden">
@@ -172,7 +170,7 @@ export function AnalyticsView() {
                 <div className="flex justify-between items-center text-xs font-bold mb-2">
                   <span className="text-slate-800 dark:text-slate-200">{item.mode}</span>
                   <span className="text-indigo-600 dark:text-indigo-400">
-                    {formatCurrency(item.amount)} ({item.percentage}%)
+                    {format(item.amount)} ({item.percentage}%)
                   </span>
                 </div>
                 <div className="h-2 w-full bg-slate-200 dark:bg-white/10 rounded-full overflow-hidden">

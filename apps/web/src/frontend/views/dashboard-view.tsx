@@ -33,6 +33,7 @@ import {
 import { ExpenseWithCategory } from '@repo/types';
 import { CreateExpenseInput } from '@repo/validators';
 import { AiReceiptScannerModal } from '../components/ai-receipt-scanner-modal';
+import { useCurrency } from '../components/currency-provider';
 
 const CATEGORY_ICON_MAP: Record<string, any> = {
   'Food & Dining': Utensils,
@@ -116,6 +117,7 @@ export function DashboardView() {
   const supabase = useMemo(() => createClient(), []);
   useRealtimeSync(supabase);
 
+  const { format } = useCurrency();
   const { data: dbExpenses } = useExpensesQuery(supabase);
   const { data: dbBudgets } = useBudgetsQuery(supabase);
   const { data: dbCategories } = useCategoriesQuery(supabase);
@@ -239,21 +241,21 @@ export function DashboardView() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <MetricCard
           title="Total Spent"
-          amount={formatCurrency(totalSpent)}
+          amount={format(totalSpent)}
           subtitle="Real-time transaction total"
           icon={<Wallet className="h-5 w-5 text-indigo-500" />}
           accentColor="rgba(99, 102, 241, 0.25)"
         />
         <MetricCard
           title="Monthly Budget Limit"
-          amount={formatCurrency(totalBudgetLimit)}
+          amount={format(totalBudgetLimit)}
           subtitle={`${daysRemaining} days left in cycle`}
           icon={<Target className="h-5 w-5 text-sky-500" />}
           accentColor="rgba(14, 165, 233, 0.25)"
         />
         <MetricCard
           title="Daily Spending Velocity"
-          amount={formatCurrency(Number(dailySpendingVelocity))}
+          amount={format(Number(dailySpendingVelocity))}
           subtitle={`Avg spend per day`}
           icon={<TrendingDown className="h-5 w-5 text-emerald-500" />}
           accentColor="rgba(16, 185, 129, 0.25)"
@@ -298,7 +300,7 @@ export function DashboardView() {
                     <div className="flex justify-between text-xs font-semibold mb-1">
                       <span className="text-slate-700 dark:text-slate-300">{item.name}</span>
                       <span className="text-slate-900 dark:text-white font-bold">
-                        {formatCurrency(item.spent)} / {formatCurrency(item.limit)}
+                        {format(item.spent)} / {format(item.limit)}
                       </span>
                     </div>
                     <div className="h-2 w-full bg-slate-200 dark:bg-white/10 rounded-full overflow-hidden">
@@ -374,7 +376,7 @@ export function DashboardView() {
                   </div>
 
                   <span className="text-sm font-black text-slate-900 dark:text-white">
-                    {formatCurrency(Number(tx.amount))}
+                    {format(Number(tx.amount))}
                   </span>
                 </div>
               );
