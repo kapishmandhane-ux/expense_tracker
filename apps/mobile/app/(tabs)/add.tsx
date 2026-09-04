@@ -1,19 +1,20 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View, ScrollView } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CustomNumpad } from '../../components/keypad/custom-numpad';
 import { GlassCard } from '../../components/glass-card';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '../../lib/supabase/secure-client';
-import { useExpenseMutations } from '@repo/api';
+import { useExpenseMutations, useCategoriesQuery } from '@repo/api';
+import { getCurrencySymbol } from '@repo/utils';
 
-const CATEGORIES = [
+const PRESET_CATEGORIES = [
   { id: 'cat-1', name: 'Food', fullName: 'Food & Dining', color: '#f97316' },
   { id: 'cat-2', name: 'Groceries', fullName: 'Groceries', color: '#10b981' },
   { id: 'cat-3', name: 'Travel', fullName: 'Transportation', color: '#3b82f6' },
   { id: 'cat-4', name: 'Bills', fullName: 'Bills & Utilities', color: '#8b5cf6' },
   { id: 'cat-5', name: 'Shopping', fullName: 'Shopping', color: '#eab308' },
-  { id: 'cat-6', name: 'Fun', fullName: 'Entertainment', color: '#ec4899' },
+  { id: 'cat-6', name: 'Entertainment', fullName: 'Entertainment', color: '#ec4899' },
 ];
 
 const PAYMENT_METHODS = [
@@ -24,11 +25,26 @@ const PAYMENT_METHODS = [
 
 export default function MobileAddExpenseScreen() {
   const router = useRouter();
+  const { data: dbCategories } = useCategoriesQuery(supabase);
+  const { createExpense } = useExpenseMutations(supabase);
+
+  const categories = useMemo(() => {
+    if (dbCategories && dbCategories.length > 0) {
+      return dbCategories.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        fullName: c.name,
+        color: c.color || '#64748b',
+      }));
+    }
+    return PRESET_CATEGORIES;
+  }, [dbCategories]);
+
   const [amount, setAmount] = useState('0');
-  const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0]);
+  const [selectedCategory, setSelectedCategory] = useState(categories[0] || PRESET_CATEGORIES[0]);
   const [paymentMethod, setPaymentMethod] = useState<'upi' | 'credit_card' | 'cash'>('upi');
 
-  const { createExpense } = useExpenseMutations(supabase);
+  const symbol = getCurrencySymbol('INR');
 
   const handleKeyPress = (key: string) => {
     try {
@@ -64,18 +80,20 @@ export default function MobileAddExpenseScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {}
 
-    // Trigger optimistic mutation
+    const chosenCat = selectedCategory || categories[0] || PRESET_CATEGORIES[0];
+
+    // Trigger mutation
     createExpense.mutate({
       amount: numAmount,
-      category_id: selectedCategory.id,
+      category_id: chosenCat.id,
       payment_method: paymentMethod as any,
-      note: selectedCategory.fullName,
+      note: chosenCat.fullName || chosenCat.name,
       spent_at: new Date().toISOString(),
     });
 
-    // Reset and navigate to history
+    // Reset and navigate to expenses tab
     setAmount('0');
-    router.replace('/(tabs)/expenses');
+    router.replace('/(tabs)/expenses' as any);
   };
 
   return (
@@ -84,13 +102,13 @@ export default function MobileAddExpenseScreen() {
 
       <GlassCard style={styles.amountCard}>
         <Text style={styles.amountLabel}>Amount</Text>
-        <Text style={styles.amountValue}>₹{amount}</Text>
+        <Text style={styles.amountValue}>{symbol}{amount}</Text>
       </GlassCard>
 
       {/* Category Pills */}
       <View style={styles.catGrid}>
-        {CATEGORIES.map((c) => {
-          const isSelected = selectedCategory.id === c.id;
+        {categories.slice(0, 8).map((c: any) => {
+          const isSelected = selectedCategory?.id === c.id;
           return (
             <TouchableOpacity
               key={c.id}
@@ -155,7 +173,7 @@ export default function MobileAddExpenseScreen() {
         onSubmit={handleSave}
       />
 
-      <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
+      <TouchableOpacity onPress={handleSave} style={styles.saveButton} activeOpacity={0.8}>
         <Text style={styles.saveText}>Save Transaction</Text>
       </TouchableOpacity>
     </View>
@@ -243,6 +261,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 14,
     alignItems: 'center',
+    shadowColor: '#6366f1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
   saveText: {
     color: '#ffffff',
