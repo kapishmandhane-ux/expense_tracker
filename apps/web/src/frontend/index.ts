@@ -10,6 +10,10 @@ export { ReceiptViewerModal } from './components/receipt-viewer-modal';
 export { CsvImportModal } from './components/csv-import-modal';
 export { AiReceiptScannerModal } from './components/ai-receipt-scanner-modal';
 export { CategoryManagerModal, ICON_MAP, COLOR_PALETTE } from './components/category-manager-modal';
+export { CommandPalette } from './components/command-palette';
+export { SpendingAreaChart } from './components/charts/spending-area-chart';
+export { CategoryDonutChart } from './components/charts/category-donut-chart';
+export { AiCopilotCard } from './components/ai-copilot-card';
 
 // Views
 export { LandingView } from './views/landing-view';
